@@ -1,11 +1,13 @@
+use crate::adr::AddressSpace;
+use crate::adr::Sample;
 use crate::core::*;
 use crate::ins::*;
 
 /// Load a new instruction, either thumb1 or thumb2, appropriately incrementing ip
-pub fn fetch_instruction(ip: &mut AWord, memory: &[AByte]) -> InsData {
+pub fn fetch_instruction(ip: &mut AWord, memory: &mut dyn AddressSpace) -> InsData {
     let mut load_half_word = || -> AHalfWord {
-        let least_significant_byte = memory[*ip as usize] as AHalfWord;
-        let most_significant_byte = memory[*ip as usize + 1] as AHalfWord;
+        let least_significant_byte = memory.readb(*ip) as AHalfWord;
+        let most_significant_byte = memory.readb(*ip + 1) as AHalfWord;
         let mut half_word = 0;
         half_word = half_word | (least_significant_byte << 8);
         half_word = half_word | (most_significant_byte << 0);
@@ -35,8 +37,10 @@ pub fn fetch_instruction(ip: &mut AWord, memory: &[AByte]) -> InsData {
 #[test]
 fn test_instruction_load() {
     let mut ip = 0;
-    let mut memory = [0; 4];
-    memory[0] = 0b00111111; // Some sort of shift
-    let gimmi = fetch_instruction(&mut ip, &memory);
+    let mut cont = [0; 4];
+    cont[0] = 0b00111111; // Some sort of shift
+                            //
+    let mut memory = Sample(&cont);
+    let gimmi = fetch_instruction(&mut ip, &mut memory);
     assert!(gimmi.is_t1());
 }
