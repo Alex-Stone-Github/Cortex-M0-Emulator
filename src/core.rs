@@ -25,3 +25,12 @@ fn test_bitidx() {
     assert_eq!(bitidx(half_word, 0, 4), 0b0000);
     assert_eq!(bitidx(half_word, 2, 4), 0b1100);
 }
+
+pub trait BitIdxable {
+    fn idx(&self, ptr: usize, len: usize) -> Self;
+}
+impl BitIdxable for AHalfWord {
+    fn idx(&self, ptr: usize, len: usize) -> AHalfWord {
+        bitidx(*self, ptr, len)
+    }
+}

@@ -1,11 +1,12 @@
+mod fetch;
 mod core;
 mod ins;
 mod registers;
 
-fn main() {
-    println!("Hello, world!");
+use crate::{core::*, fetch::fetch_instruction};
 
-    let memory = [
+fn main() {
+    let mut memory = [
         // Shift Type Stuff
         0, 0,          // Shift LSL
         0b00001000, 0, // Shift LSR
@@ -34,17 +35,106 @@ fn main() {
         0b11010000, 0, // Cond Branch
         0b11100000, 0, // UnCond Branch
     ];
-    let cpu = &mut registers::Registers {
-        R: [0; 13],
-        SP: 0,
-        LR: 0,
-        PC: 0,
+    let mut cpu = &mut registers::Registers {
+        r: [0; 13],
+        sp: 0,
+        lr: 0,
+        pc: 0,
 
-        N: false,
-        Z: false,
-        C: false,
-        V: false,
+        n: false,
+        z: false,
+        c: false,
+        v: false,
     };
 
-    registers::execute(cpu, &memory);
+    // Implement Instructions
+    let mut instructions = ins::LoaderExecuter::new();
+
+    instructions.implement(
+        "ADC (register)",
+        |ins| ins.is_t1() && ins.hdr.idx(6, 9) == 0b0100000101,
+        |ins, cpu, _| {
+            let rdn_no = ins.hdr.idx(0, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            cpu.r[rdn_no] += cpu.r[rm_no] + if cpu.c {1} else {0};
+        }
+    );
+
+    instructions.implement(
+        "Add (immediate)",
+        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001110,
+        |ins, cpu, _| {
+            let rd_no = ins.hdr.idx(0, 3) as usize;
+            let rn_no = ins.hdr.idx(3, 3) as usize;
+            let imd = ins.hdr.idx(6, 3) as AWord;
+            cpu.r[rd_no] = cpu.r[rn_no] + imd;
+        }
+    );
+
+    instructions.implement(
+        "Add (register)",
+        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001100,
+        |ins, cpu, _| {
+            let rd_no = ins.hdr.idx(0, 3) as usize;
+            let rn_no = ins.hdr.idx(3, 3) as usize;
+            let rm_no = ins.hdr.idx(6, 3) as usize;
+            cpu.r[rd_no] = cpu.r[rm_no] + cpu.r[rn_no];
+        }
+    );
+
+    instructions.implement(
+        "Add (SP + immediate)",
+        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b10101,
+        |ins, cpu, _| {
+            let imd = ins.hdr.idx(0, 8) as AWord;
+            let rd_no = ins.hdr.idx(8, 3) as usize;
+            cpu.r[rd_no] = cpu.sp + imd;
+        }
+    );
+
+    instructions.implement(
+        "Add (SP + register)",
+        |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000100 && ins.hdr.idx(3, 4) == 0b1101,
+        |ins, cpu, _| {
+            let rdm_no = ins.hdr.idx(0, 3) as usize;
+            cpu.r[rdm_no] += cpu.sp;
+        }
+    );
+
+    instructions.implement(
+        "ADR",
+        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b10100,
+        |ins, cpu, _| {
+            let imd = ins.hdr.idx(0, 8) as AWord;
+            let rd_no = ins.hdr.idx(8, 3) as usize;
+            cpu.r[rd_no] = cpu.pc + imd;
+        }
+    );
+
+    instructions.implement(
+        "AND",
+        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100000000,
+        |ins, cpu, _| {
+            let rdn_no = ins.hdr.idx(0, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            cpu.r[rdn_no] &= cpu.r[rm_no];
+        }
+    );
+
+    instructions.implement(
+        "ASR (immediate)",
+        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b00010,
+        |ins, cpu, _| {
+            let rd_no = ins.hdr.idx(0, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            let imd = ins.hdr.idx(6, 5) as AWord;
+            cpu.r[rd_no] = cpu.r[rm_no] >> imd;
+        }
+    );
+
+    loop {
+        let instruction = fetch_instruction(&mut cpu.pc, &memory);
+        instructions.execute(&instruction, &mut cpu, &mut memory);
+        dbg!(&cpu);
+    }
 }
