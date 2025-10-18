@@ -20,7 +20,7 @@ fn main() {
         0b00111000, 0, // sub 8bit imed
                        
                        
-        0b01000000, 0, // Data Processing
+        0b01000001, 0b01111000, // Data Processing
         0b01000100, 0, // Special Data
         0b01001000, 0, // Load Literal
         0b01010000, 0, // Ldr / Str
@@ -39,6 +39,12 @@ fn main() {
         SP: 0,
         LR: 0,
         PC: 0,
+
+        N: false,
+        Z: false,
+        C: false,
+        V: false,
     };
+
     registers::execute(cpu, &memory);
 }

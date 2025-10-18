@@ -8,78 +8,39 @@ pub struct Registers {
     pub LR: AWord,
     pub PC: AWord,
 
+    // Flags
+    pub N: bool,
+    pub Z: bool,
+    pub C: bool,
+    pub V: bool,
+
     // Special(could be memory accessed)
     // CPUID, ICSR, AIRCR, CCR, PRIMASK, CONTROL, CPSR
 }
 
-fn exec_shift_class(cpu: &mut Registers, ins: Instruction) {
-    if let Instruction::Thumb1(i) = ins {
-        // Get just the opcode bytes
-        let code = ((i << 2) >> (16-5)) as u8;
-        match code {
-            // Logical Shift Left
-            c if 0 == (c >> 2) => {
-                dbg!("Logical Shift Left");
-                dbg!(c);
-            },
-            c if 1 == (c >> 2) => {
-                dbg!("Logical Shift Right");
-                dbg!(c);
-            },
-            c if 0b010 == (c >> 2) => {
-                dbg!("Arithmetic Shift Right");
-                dbg!(c);
-            },
-            c if 0b01100 == c => {
-                dbg!("Add Register");
-                dbg!(c);
-            },
-            c if 0b01101 == c => {
-                dbg!("Sub Register");
-                dbg!(c);
-            },
-            c if 0b01110 == c => {
-                dbg!("Add 3bit Immediate");
-                dbg!(c);
-            },
-            c if 0b01111 == c => {
-                dbg!("Sub 3bit Immediate");
-                dbg!(c);
-            },
-            c if 0b100 == (c >> 2) => {
-                dbg!("Move");
-                dbg!(c);
-            },
-            c if 0b101 == (c >> 2) => {
-                dbg!("Compare");
-                dbg!(c);
-            },
-            c if 0b110 == (c >> 2) => {
-                dbg!("Add 8b imd");
-                dbg!(c);
-            },
-            c if 0b111 == (c >> 2) => {
-                dbg!("Sub 8b imd");
-                dbg!(c);
-            },
-            _ => unreachable!()
-        }
+fn exec_thumb1(cpu: &mut Registers, ins: AHalfWord) {
+    match ins {
+        // ADC
+        i if bitidx(i, 6, 10) == 0b0100000101 => {
+            let rm = &mut cpu.R[bitidx(i, 3, 3) as usize];
+            let rdn = &mut cpu.R[bitidx(i, 0, 3) as usize];
+            println!("Executing adc reg {} {}", rm, rdn);
+            *rdn += *rm + if cpu.C {1} else {0};
+            cpu.N = bitidx(*rdn, 31, 1) == 1;
+         },
+        _ => {
+            println!("Unimplemented Instruction");
+        },
     }
-    else {panic!("Failure")}
 }
 
-pub fn execute(cpu: &mut Registers, memory: &[AByte]) {
-    for _ in 0..11 {
-        let instruction = fetch_instruction(&mut cpu.PC, memory);
-        let class = instruction.get_class()
-            .expect("Cannot Process invalid instruction");
-        dbg!(class);
-        match class {
-            InstructionClass::ShiftAddMoveCompare => {
-                exec_shift_class(cpu, instruction);
-            },
-            _ => unimplemented!()
-        };
 
+pub fn execute(cpu: &mut Registers, memory: &[AByte]) {
+    for _ in 0..(memory.len() / 2) {
+        let instruction = fetch_instruction(&mut cpu.PC, memory);
+        match instruction {
+            Instruction::Thumb1(ins) => exec_thumb1(cpu, ins),
+            Instruction::Thumb2(_, _) => unimplemented!()
+        }
     }
 }
