@@ -1,11 +1,12 @@
 use crate::core::*;
 
+pub const SP_IDX: usize = 13;
+pub const LR_IDX: usize = 14;
+pub const PC_IDX: usize = 15;
+
 #[derive(Debug, Clone)]
 pub struct Registers {
-    pub r: [AWord; 13], // General Purpose Registers
-    pub sp: AWord,
-    pub lr: AWord,
-    pub pc: AWord,
+    pub r: [AWord; 16], // General Purpose Registers
 
     // Flags
     pub n: bool,

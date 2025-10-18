@@ -772,68 +772,10 @@ fn main() {
 
     instructions.implement(
         "TST (register)",
-        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001000,
+        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b1011001000,
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            // performs add, sets flags, discards results
-            todo!()
-        }
-    );
-
-    instructions.implement(
-        "UDF",
-        |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b11011110,
-        |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 8) as usize;
-            // undefined instruction exception generation
-            todo!()
-        }
-    );
-
-    instructions.implement(
-        "UXTB",
-        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b1011001011,
-        |ins, cpu, _| {
-            let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!()
-        }
-    );
-
-    instructions.implement(
-        "UXTH",
-        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b1011001010,
-        |ins, cpu, _| {
-            let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!()
-        }
-    );
-
-    instructions.implement(
-        "WFE",
-        |ins| ins.is_t1() && ins.hdr == 0b1011111100100000,
-        |ins, cpu, _| {
-            // Enter Low Power Mode until event is  sent
-            todo!()
-        }
-    );
-
-    instructions.implement(
-        "WFI",
-        |ins| ins.is_t1() && ins.hdr == 0b1011111100110000,
-        |ins, cpu, _| {
-            // Wait for interrupt
-            todo!()
-        }
-    );
-
-    instructions.implement(
-        "YIELD",
-        |ins| ins.is_t1() && ins.hdr == 0b1011111100010000,
-        |ins, cpu, _| {
-            // yield enables multithreading capability
             todo!()
         }
     );
