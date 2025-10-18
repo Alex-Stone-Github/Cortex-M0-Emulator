@@ -1,5 +1,5 @@
 use crate::core::*;
-use crate::ins::{Instruction, fetch_instruction};
+use crate::ins::{fetch_instruction, Instruction, InstructionClass};
 
 #[derive(Debug, Clone)]
 pub struct Registers {
@@ -13,12 +13,73 @@ pub struct Registers {
 }
 
 fn exec_shift_class(cpu: &mut Registers, ins: Instruction) {
-
+    if let Instruction::Thumb1(i) = ins {
+        // Get just the opcode bytes
+        let code = ((i << 2) >> (16-5)) as u8;
+        match code {
+            // Logical Shift Left
+            c if 0 == (c >> 2) => {
+                dbg!("Logical Shift Left");
+                dbg!(c);
+            },
+            c if 1 == (c >> 2) => {
+                dbg!("Logical Shift Right");
+                dbg!(c);
+            },
+            c if 0b010 == (c >> 2) => {
+                dbg!("Arithmetic Shift Right");
+                dbg!(c);
+            },
+            c if 0b01100 == c => {
+                dbg!("Add Register");
+                dbg!(c);
+            },
+            c if 0b01101 == c => {
+                dbg!("Sub Register");
+                dbg!(c);
+            },
+            c if 0b01110 == c => {
+                dbg!("Add 3bit Immediate");
+                dbg!(c);
+            },
+            c if 0b01111 == c => {
+                dbg!("Sub 3bit Immediate");
+                dbg!(c);
+            },
+            c if 0b100 == (c >> 2) => {
+                dbg!("Move");
+                dbg!(c);
+            },
+            c if 0b101 == (c >> 2) => {
+                dbg!("Compare");
+                dbg!(c);
+            },
+            c if 0b110 == (c >> 2) => {
+                dbg!("Add 8b imd");
+                dbg!(c);
+            },
+            c if 0b111 == (c >> 2) => {
+                dbg!("Sub 8b imd");
+                dbg!(c);
+            },
+            _ => unreachable!()
+        }
+    }
+    else {panic!("Failure")}
 }
 
 pub fn execute(cpu: &mut Registers, memory: &[AByte]) {
-    for _ in 0..13 {
+    for _ in 0..11 {
         let instruction = fetch_instruction(&mut cpu.PC, memory);
-        dbg!(instruction.get_class());
+        let class = instruction.get_class()
+            .expect("Cannot Process invalid instruction");
+        dbg!(class);
+        match class {
+            InstructionClass::ShiftAddMoveCompare => {
+                exec_shift_class(cpu, instruction);
+            },
+            _ => unimplemented!()
+        };
+
     }
 }
