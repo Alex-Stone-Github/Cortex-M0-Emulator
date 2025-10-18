@@ -1,8 +1,0 @@
-- [ ] Registrar Email
-- [ ] Study History
-- [ ] Workout
-- [ ] Return to library
-- [ ] Meals
-- [ ] Proc
-- [ ] Study
-- [ ] MkSchedule

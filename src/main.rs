@@ -712,7 +712,7 @@ fn main() {
 
     instructions.implement(
         "SUB (immediate)",
-        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100000110,
+        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001111,
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
