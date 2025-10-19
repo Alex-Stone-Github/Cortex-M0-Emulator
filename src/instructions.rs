@@ -3,6 +3,32 @@ use crate::registers::{Registers, SP_IDX, LR_IDX, PC_IDX};
 use crate::core::*;
 use crate::ins::LoaderExecuter;
 
+
+const DATA_IS_LE: bool = true;
+
+// signit and unsignit exist so we don't mess with the sign bit on implicit conversions
+fn signit(x: AWord) -> i32 {
+    // Defined on x86_64
+    unsafe { std::mem::transmute::<u32, i32>(x) }
+}
+// signit and unsignit exist so we don't mess with the sign bit on implicit conversions
+fn unsignit(x: i32) -> AWord {
+    // Defined on x86_64
+    unsafe { std::mem::transmute::<i32, u32>(x) }
+}
+
+/// Result, Carry Out, Overflow
+fn cortex_add(a: AWord, b: AWord) -> (AWord, bool, bool) {
+    let (result, carry_out) = a.overflowing_add(b);
+    let (_, overflow) = signit(a).overflowing_add(signit(b));
+    (result, carry_out, overflow)
+}
+fn cortex_sub(a: AWord, b: AWord) -> (AWord, bool, bool) {
+    let (result, carry_out) = a.overflowing_sub(b);
+    let (_, overflow) = signit(a).overflowing_sub(signit(b));
+    (result, carry_out, overflow)
+}
+
 pub fn load_basic_instructions(
     instructions: &mut LoaderExecuter,
     cpu: &mut Registers,
@@ -15,7 +41,13 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdn_no] += cpu.r[rm_no] + if cpu.c {1} else {0};
+            let (result, carry1, over1) = cortex_add(cpu.r[rm_no], if cpu.c {1} else {0});
+            let (result2, carry2, over2) = cortex_add(result, cpu.r[rdn_no]);
+            cpu.r[rdn_no] = result2;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.c = carry1 || carry2;
+            cpu.v = over1 || over2;
         }
     );
 
@@ -24,9 +56,14 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001110,
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 3) as AWord;
-            cpu.r[rd_no] = cpu.r[rn_no] + imd;
+            let (result, carry, over) = cortex_add(cpu.r[rm_no], imd);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -35,9 +72,14 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001100,
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            let rm_no = ins.hdr.idx(6, 3) as usize;
-            cpu.r[rd_no] = cpu.r[rm_no] + cpu.r[rn_no];
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            let rn_no = ins.hdr.idx(6, 3) as usize;
+            let (result, carry, over) = cortex_add(cpu.r[rm_no], cpu.r[rn_no]);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -47,7 +89,12 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 8) as AWord;
             let rd_no = ins.hdr.idx(8, 3) as usize;
-            cpu.r[rd_no] = cpu.r[SP_IDX] + imd;
+            let (result, carry, over) = cortex_add(cpu.r[SP_IDX], imd);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -56,7 +103,12 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000100 && ins.hdr.idx(3, 4) == 0b1101,
         |ins, cpu, _| {
             let rdm_no = ins.hdr.idx(0, 3) as usize;
-            cpu.r[rdm_no] += cpu.r[SP_IDX];
+            let (result, carry, over) = cortex_add(cpu.r[SP_IDX], cpu.r[rdm_no]);
+            cpu.r[rdm_no] = result;
+            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
+            cpu.z = cpu.r[rdm_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -66,7 +118,12 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 8) as AWord;
             let rd_no = ins.hdr.idx(8, 3) as usize;
-            cpu.r[rd_no] = cpu.r[PC_IDX] + imd;
+            let (result, carry, over) = cortex_add(cpu.r[PC_IDX], imd);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -77,6 +134,8 @@ pub fn load_basic_instructions(
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rdn_no] &= cpu.r[rm_no];
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
         }
     );
 
@@ -87,7 +146,12 @@ pub fn load_basic_instructions(
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rd_no] = cpu.r[rm_no] >> imd;
+            cpu.r[rd_no] = cpu.r[rm_no] >> (imd-1);
+            let carry = 0 < (cpu.r[rd_no] & 1);
+            cpu.r[rd_no] = cpu.r[rm_no] >> 1;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
         }
     );
 
@@ -97,7 +161,12 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdn_no] = cpu.r[rdn_no] >> cpu.r[rm_no];
+            cpu.r[rdn_no] = cpu.r[rdn_no] >> (cpu.r[rm_no]-1);
+            let carry = 0 < (cpu.r[rdn_no] & 1);
+            cpu.r[rdn_no] = cpu.r[rdn_no] >> 1;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.c = carry;
         }
     );
 
@@ -106,12 +175,27 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b1101,
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 8) as AWord;
-            let cond_no = ins.hdr.idx(8, 4) as usize;
-            if cond_no == 0 {
+            let cond = ins.hdr.idx(8, 4) as usize;
+            let should_branch = match cond {
+                0b1110 => true,
+                0b0000 => cpu.z == true,
+                0b0001 => cpu.z == false,
+                0b0010 => cpu.c == true,
+                0b0011 => cpu.c == false,
+                0b0100 => cpu.n == true,
+                0b0101 => cpu.n == false,
+                0b0110 => cpu.v == true,
+                0b0111 => cpu.v == false,
+                0b1000 => cpu.c == true && cpu.z == false,
+                0b1001 => cpu.v == false && cpu.z == true,
+                0b1010 => cpu.n == cpu.v,
+                0b1011 => cpu.n != cpu.v,
+                0b1100 => cpu.z == false && cpu.n == cpu.v,
+                0b1101 => cpu.z == true && cpu.z != cpu.v,
+                _ => false
+            };
+            if should_branch {
                 cpu.r[PC_IDX] += imd;
-            }
-            else {
-                unimplemented!("don't support conditional branching yet")
             }
         }
     );
@@ -123,6 +207,8 @@ pub fn load_basic_instructions(
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rdn_no] &= cpu.r[rm_no].wrapping_neg();
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
         }
     );
 
@@ -131,7 +217,7 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b10111110,
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 8) as AWord;
-            println!("BREAKPOINT HITQQQQQQQQQ!!!!!!!!!!!!!");
+            unimplemented!("Breakpoints are not implemented yet!")
         }
     );
 
@@ -146,8 +232,24 @@ pub fn load_basic_instructions(
         },
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
-            cpu.r[PC_IDX] = 0;
-            todo!()
+            let imd10 = ins.hdr.idx(0, 10) as AWord;
+            let s = ins.hdr.idx(10, 1) as AWord;
+            let imd11 = ext.idx(0, 13) as AWord;
+            let j1 = ext.idx(13, 1) as AWord;
+            let j2 = ext.idx(11, 1) as AWord;
+            let i1 = if !((j1 > 0) ^ (s > 0)) {1} else {0};
+            let i2 = if !((j2 > 0) ^ (s > 0)) {1} else {0};
+            let mut address: AWord = 0;
+            address |= imd11;
+            address |= (imd10 << 11);
+            address |= (i1 << 21);
+            address |= (i2 << 22);
+            address |= (s << 23);
+            address = address << 1; // 25th "bit"
+            // Save PC to LR
+            cpu.r[LR_IDX] = cpu.r[PC_IDX];
+            cpu.r[PC_IDX] = address;
+            
         }
     );
 
@@ -156,10 +258,12 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(7, 9) == 0b010001111,
         |ins, cpu, _| {
             let rm_no = ins.hdr.idx(3, 3) as usize;
+            cpu.r[LR_IDX] = cpu.r[PC_IDX];
             cpu.r[PC_IDX] = cpu.r[rm_no];
         }
     );
 
+    // Very similar(basically) -> Branch (register)
     instructions.implement(
         "BX",
         |ins| ins.is_t1() && ins.hdr.idx(7, 9) == 0b010001110,
@@ -175,7 +279,11 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            unimplemented!("Should do the same as an ads but just updates flags");
+            let (result, carry, over) = cortex_add(cpu.r[rm_no], cpu.r[rn_no]);
+            cpu.n = 0 < (result & (1 << 31));
+            cpu.z = result == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -183,9 +291,13 @@ pub fn load_basic_instructions(
         "CMP (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b00101,
         |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 8) as usize;
+            let imd = ins.hdr.idx(0, 8) as AWord;
             let rn_no = ins.hdr.idx(8, 3) as usize;
-            unimplemented!("should do same as the sub but discoards rust and just upadate flags");
+            let (result, carry, over) = cortex_sub(cpu.r[rn_no], imd);
+            cpu.n = 0 < (result & (1 << 31));
+            cpu.z = result == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -195,19 +307,14 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            unimplemented!("should do same as the sub but discoards rust and just upadate flags");
+            let (result, carry, over) = cortex_sub(cpu.r[rn_no], cpu.r[rm_no]);
+            cpu.n = 0 < (result & (1 << 31));
+            cpu.z = result == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
-    instructions.implement(
-        "CMP (register)",
-        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001010,
-        |ins, cpu, _| {
-            let rn_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            unimplemented!("should do same as the sub but discoards rust and just upadate flags");
-        }
-    );
 
     instructions.implement(
         "DMB",
@@ -220,9 +327,7 @@ pub fn load_basic_instructions(
         },
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
-            // Data Memory Barrier, acts as a memory barrier iensures that explicit memory access
-            // appears before this function is called
-            todo!()
+            unimplemented!("Data Memory Barrier Unimplemented")
         }
     );
 
@@ -237,9 +342,7 @@ pub fn load_basic_instructions(
         },
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
-            // Data Sync Barrier, acts as a memory barrier iensures that explicit memory access
-            // appears before this function is called same thing as dmb but with instructions
-            todo!()
+            unimplemented!("Data Sync Barrier Unimplemented")
         }
     );
 
@@ -250,6 +353,9 @@ pub fn load_basic_instructions(
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rdn_no] ^= cpu.r[rm_no];
+            let result = cpu.r[rdn_no];
+            cpu.n = 0 < (result & (1 << 31));
+            cpu.z = result == 0;
         }
     );
 
@@ -264,13 +370,7 @@ pub fn load_basic_instructions(
         },
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
-
-            // Instruction Sync Barrier, acts as a memory barrier iensures that explicit memory
-            // access so thae appears before this function is called same thing as dmb but with
-            // instructions this is actually a prety cool system of text, it will be cool when I
-            // eventually implement what these should actually do
-            
-            todo!()
+            unreachable!("Instruction sync barrier unimplmeneted")
         }
     );
 

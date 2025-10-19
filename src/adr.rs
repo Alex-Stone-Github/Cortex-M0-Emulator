@@ -1,4 +1,4 @@
-use crate::core::{AByte, AWord};
+use crate::core::{AByte, AHalfWord, AWord};
 
 pub const SAMPLE: [AByte; 48] = [
     // Shift Type Stuff
@@ -34,6 +34,40 @@ pub const SAMPLE: [AByte; 48] = [
 pub trait AddressSpace {
     fn readb(&mut self, adr: AWord) -> AByte;
     fn writeb(&mut self, adr: AWord, x: AByte);
+
+    fn read_hw_le(&mut self, adr: AWord) -> AHalfWord {
+        debug_assert!(adr % 2 == 0);
+        let lsby = self.readb(adr) as AHalfWord;
+        let msby = self.readb(adr+1) as AHalfWord;
+        let mut half_word = lsby;
+        half_word |= (msby << 8);
+        half_word
+    }
+    fn read_hw_be(&mut self, adr: AWord) -> AHalfWord {
+        self.read_hw_le(adr).swap_bytes()
+    }
+    fn read_w_le(&mut self, adr: AWord) -> AWord {
+        debug_assert!(adr % 4 == 0);
+        let bits: [AByte; 4] = [
+            self.readb(adr),
+            self.readb(adr+1),
+            self.readb(adr+2),
+            self.readb(adr+3),
+        ];
+        // Probably defined(same size at least)
+        unsafe { std::mem::transmute::<[AByte; 4], AWord>(bits) }
+    }
+    fn read_w_be(&mut self, adr: AWord) -> AWord {
+        self.read_w_le(adr).swap_bytes()
+    }
+}
+
+#[test]
+fn test_lsb_read() {
+    let mut mem = [3, 0];
+    let mut sample_adr = Sample(&mut mem);
+    let info = sample_adr.read_hw_le(0);
+    assert_eq!(info, 3);
 }
 
 pub struct Sample<'a>(pub &'a [u8]);
