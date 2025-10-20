@@ -3,9 +3,6 @@ use crate::registers::{Registers, SP_IDX, LR_IDX, PC_IDX};
 use crate::core::*;
 use crate::ins::LoaderExecuter;
 
-
-const DATA_IS_LE: bool = true;
-
 // signit and unsignit exist so we don't mess with the sign bit on implicit conversions
 fn signit(x: AWord) -> i32 {
     // Defined on x86_64
@@ -33,6 +30,8 @@ pub fn load_basic_instructions(
     instructions: &mut LoaderExecuter,
     cpu: &mut Registers,
     addresses: &mut dyn AddressSpace) {
+
+    // Little Endian & Big endian Loads and Stores
 
     // Start Instruction Definitions
     instructions.implement(
@@ -146,12 +145,13 @@ pub fn load_basic_instructions(
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rd_no] = cpu.r[rm_no] >> (imd-1);
-            let carry = 0 < (cpu.r[rd_no] & 1);
-            cpu.r[rd_no] = cpu.r[rm_no] >> 1;
+            if 0 < imd {
+                cpu.r[rd_no] = ((cpu.r[rm_no] as i32) >> (imd-1)) as AWord;
+                cpu.c = 0 < (cpu.r[rd_no] & 1);
+                cpu.r[rd_no] = ((cpu.r[rm_no]) >> 1) as AWord;
+            } // shift 0 does nothing
             cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
             cpu.z = cpu.r[rd_no] == 0;
-            cpu.c = carry;
         }
     );
 
@@ -161,12 +161,13 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdn_no] = cpu.r[rdn_no] >> (cpu.r[rm_no]-1);
-            let carry = 0 < (cpu.r[rdn_no] & 1);
-            cpu.r[rdn_no] = cpu.r[rdn_no] >> 1;
+            if 0 < cpu.r[rm_no] {
+                cpu.r[rdn_no] = ((cpu.r[rdn_no] as i32) >> (cpu.r[rm_no]-1)) as AWord;
+                cpu.c = 0 < (cpu.r[rdn_no] & 1);
+                cpu.r[rdn_no] = ((cpu.r[rdn_no] as i32) >> 1) as AWord;
+            } // shift 0 doe snothing
             cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
             cpu.z = cpu.r[rdn_no] == 0;
-            cpu.c = carry;
         }
     );
 
@@ -370,104 +371,111 @@ pub fn load_basic_instructions(
         },
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
-            unreachable!("Instruction sync barrier unimplmeneted")
+            unimplemented!("Instruction sync barrier unimplmeneted")
         }
     );
 
     instructions.implement(
         "LDM, LMIA, LDMFD",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b11001,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rn_no = ins.hdr.idx(8, 3) as usize;
-            let reglist = ins.hdr.idx(0, 8) as AWord;
-            unimplemented!()
+            let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
+            // Load multiple registers accordin to bitmask starting at [rn_no]
+            let mut offset = 0;
+            for i in 0..8 {
+                if 0 == reglist.idx(i, 1) { continue; }
+                cpu.r[i] = addresses.read_w(cpu.r[rn_no] + offset);
+                offset += 4;
+            }
         }
     );
 
     instructions.implement(
         "LDR (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01101,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no] + (imd << 4));
         }
     );
 
     instructions.implement(
         "LDR (literal)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01001,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let imd = ins.hdr.idx(0, 8) as AWord;
             let rt_no = ins.hdr.idx(8, 3) as usize;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.read_w(cpu.r[PC_IDX] + (imd << 4));
         }
     );
 
     instructions.implement(
         "LDR (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101100,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            // TODO: Could be a bug
+            cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no] + (cpu.r[rm_no] << 4));
         }
     );
 
     instructions.implement(
-        "LDRB (register)",
+        "LDRB (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01111,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (imd << 4)) as AWord;
         }
     );
 
     instructions.implement(
         "LDRB (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101110,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (cpu.r[rm_no] << 4)) as AWord;
         }
     );
 
     instructions.implement(
         "LDRH (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b10001,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.read_hw(cpu.r[rn_no] + (imd << 4)) as AWord;
         }
     );
 
     instructions.implement(
         "LDRSB (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101011,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (cpu.r[rm_no] << 4)) as i8 as i32 as AWord;
         }
     );
 
     instructions.implement(
         "LDRSH (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101111,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            cpu.r[rt_no] = addresses.read_hw(cpu.r[rn_no] + (cpu.r[rm_no] << 4)) as i16 as i32 as u32;
         }
     );
 
@@ -478,7 +486,13 @@ pub fn load_basic_instructions(
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rd_no] = cpu.r[rm_no] << imd;
+            if 0 < imd {
+                cpu.r[rd_no] = cpu.r[rm_no] << (imd - 1);
+                cpu.c = bitidx(cpu.r[rm_no], 31, 1) > 0;
+                cpu.r[rd_no] = cpu.r[rd_no] << 1;
+            }
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
         }
     );
 
@@ -488,7 +502,13 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdn_no] = cpu.r[rdn_no] << cpu.r[rm_no];
+            if 0 < cpu.r[rm_no] {
+                cpu.r[rdn_no] = cpu.r[rdn_no] << (cpu.r[rm_no] - 1);
+                cpu.c = bitidx(cpu.r[rdn_no], 31, 1) > 0;
+                cpu.r[rdn_no] = cpu.r[rdn_no] << 1;
+            }
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
         }
     );
 
@@ -499,7 +519,13 @@ pub fn load_basic_instructions(
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rd_no] = cpu.r[rm_no] >> imd;
+            if 0 < imd {
+                cpu.r[rd_no] = cpu.r[rm_no] >> (imd - 1);
+                cpu.c = bitidx(cpu.r[rd_no], 31, 1) > 0;
+                cpu.r[rd_no] = cpu.r[rd_no] >> 1;
+            }
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
         }
     );
 
@@ -509,7 +535,13 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdn_no] = cpu.r[rdn_no] >> cpu.r[rm_no];
+            if 0 < cpu.r[rm_no] {
+                cpu.r[rdn_no] = cpu.r[rm_no] >> (cpu.r[rm_no] - 1);
+                cpu.c = bitidx(cpu.r[rdn_no], 31, 1) > 0;
+                cpu.r[rdn_no] = cpu.r[rdn_no] >> 1;
+            }
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
         }
     );
 
@@ -520,6 +552,8 @@ pub fn load_basic_instructions(
             let imd = ins.hdr.idx(0, 8) as AWord;
             let rd_no = ins.hdr.idx(8, 3) as usize;
             cpu.r[rd_no] = imd;
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
         }
     );
 
@@ -530,6 +564,8 @@ pub fn load_basic_instructions(
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 4) as usize;
             cpu.r[rd_no] = cpu.r[rm_no];
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
         }
     );
 
@@ -544,13 +580,7 @@ pub fn load_basic_instructions(
         },
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
-
-            // Instruction Sync Barrier, acts as a memory barrier iensures that explicit memory
-            // access so thae appears before this function is called same thing as dmb but with
-            // instructions this is actually a prety cool system of text, it will be cool when I
-            // eventually implement what these should actually do
-            
-            todo!()
+            unimplemented!()
         }
     );
 
@@ -566,12 +596,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let ext = ins.ext.unwrap();
 
-            // Instruction Sync Barrier, acts as a memory barrier iensures that explicit memory
-            // access so thae appears before this function is called same thing as dmb but with
-            // instructions this is actually a prety cool system of text, it will be cool when I
-            // eventually implement what these should actually do
-            
-            todo!()
+            unimplemented!()
         }
     );
 
@@ -582,6 +607,9 @@ pub fn load_basic_instructions(
             let rdm_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rdm_no] *= cpu.r[rn_no];
+
+            cpu.z = cpu.r[rdm_no] == 0;
+            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
         }
     );
 
@@ -592,6 +620,9 @@ pub fn load_basic_instructions(
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rd_no] = !cpu.r[rn_no];
+
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
         }
     );
 
@@ -608,22 +639,46 @@ pub fn load_basic_instructions(
             let rdm_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rdm_no] |= cpu.r[rn_no];
+
+            cpu.z = cpu.r[rdm_no] == 0;
+            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
         }
     );
 
     instructions.implement(
         "POP",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b1011110,
-        |ins, cpu, _| {
-            todo!()
+        |ins, cpu, addresses| {
+            let p = ins.hdr.idx(8, 1) > 0;
+            let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
+            for i in 0..8 {
+                if 0 == reglist.idx(i, 1) { continue; }
+                cpu.r[i] = addresses.read_w(cpu.r[SP_IDX]);
+                cpu.r[SP_IDX] += 4;
+            }
+            if p {
+                cpu.r[PC_IDX] = addresses.read_w(cpu.r[SP_IDX]);
+                cpu.r[SP_IDX] += 4;
+            }
         }
     );
 
     instructions.implement(
         "PUSH",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b10110110,
-        |ins, cpu, _| {
-            todo!()
+        |ins, cpu, addresses| {
+            let m = ins.hdr.idx(8, 1) > 0;
+            let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
+            
+            for i in 0..8 {
+                if 0 == reglist.idx(i, 1) { continue; }
+                cpu.r[SP_IDX] -= 4;
+                addresses.write_w(cpu.r[SP_IDX], cpu.r[i]);
+            }
+            if m {
+                cpu.r[SP_IDX] -= 4;
+                addresses.write_w(cpu.r[SP_IDX], cpu.r[LR_IDX]);
+            }
         }
     );
 
@@ -653,8 +708,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
-            todo!("need to make sure sign is presenved");
-            cpu.r[rd_no] = (cpu.r[rn_no] as AHalfWord).swap_bytes() as AWord;
+            cpu.r[rd_no] = (cpu.r[rn_no] as AHalfWord).swap_bytes() as i16 as i32 as AWord;
         }
     );
 
@@ -665,6 +719,10 @@ pub fn load_basic_instructions(
             let rdm_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             cpu.r[rdm_no] = cpu.r[rdm_no].rotate_right(cpu.r[rn_no]);
+
+            cpu.z = cpu.r[rdm_no] == 0;
+            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
+            cpu.c = 0 < (cpu.r[rdm_no] & (1 << 31));
         }
     );
 
@@ -674,7 +732,13 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
-            todo!();
+            let (result, carry, over) = cortex_sub(0, cpu.r[rn_no]);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
+
         }
     );
 
@@ -684,7 +748,14 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rdn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!();
+            //Kind of the exact opposite of adc: Rd = Rn - Rm - (1 - C) 
+            let (result1, carry1, over1) = cortex_sub(cpu.r[rdn_no], cpu.r[rm_no]);
+            let (result2, carry2, over2) = cortex_sub(result1, if cpu.c {1} else {0});
+            cpu.r[rdn_no] = result2;
+            cpu.c = carry1 || carry2;
+            cpu.v = over1 || over2;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
         }
     );
 
@@ -692,8 +763,7 @@ pub fn load_basic_instructions(
         "SEV",
         |ins| ins.is_t1() && ins.hdr == 0b1011111101000000,
         |_, _, _| {
-            // send event hint instruction
-            todo!();
+            unimplemented!()
         }
     );
 
