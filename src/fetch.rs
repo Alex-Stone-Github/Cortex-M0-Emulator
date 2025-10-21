@@ -7,7 +7,7 @@ use crate::ins::*;
 pub fn fetch_instruction(ip: &mut AWord, memory: &mut dyn AddressSpace) -> InsData {
     let mut load_half_word = || -> AHalfWord {
         // Load Instruction
-        let load_adr = ip.wrapping_sub(4);
+        let load_adr = ip.wrapping_sub(2);
         let half_word = memory.read_hw_le(load_adr);
         // Advance to next instruction
         *ip = ip.wrapping_add(2);

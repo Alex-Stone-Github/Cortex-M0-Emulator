@@ -1,8 +1,15 @@
 SECTIONS
 {
+	. = 0;
     .text :
     {
-		. = 0;
-        KEEP(*(.text))
+        *(.text)
+		*(.rodata)
+		*(.rodata.*)
     }
+	.data : 
+	{
+		*(.data)
+		*(.bss)
+	}
 }

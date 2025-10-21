@@ -14,6 +14,25 @@ make
 cargo r
 ```
 
+This program now also links with c code, and you can edit the file
+`./asmsrc/c.c` and modify the function. It should be able to call other
+functions as well if you setup the stack pointer.
+
+```c
+extern volatile char my_four;
+
+char* garbage = "HIC";
+
+void centry() {
+	my_four = 5;
+	for (int i = 0; i < 5; i ++) {
+		my_four += 2;
+	}
+	return;
+}
+```
+
+
 # Compatability
 
 This emulator can only run on lsb data access host machines, making it

@@ -25,7 +25,7 @@ fn main() {
         c: false,
         v: false,
     };
-    cpu.r[PC_IDX] = 4; // PC Points to currently executing instruction + 4
+    cpu.r[PC_IDX] = 2; // PC Points to currently executing instruction + 4
 
     const PATH: &str = "./build/program";
     let mut memory = fstools::read_file_buffer(PATH).expect(&format!("Could not load {}", PATH));
@@ -40,9 +40,11 @@ fn main() {
     let stdin = std::io::stdin();
     let mut tmp = String::new();
     loop {
-        print_proc_state(&cpu);
-        stdin.read_line(&mut tmp).expect("Stdout Error");
+        println!("READY!-------------------------------------");
         let instruction = fetch_instruction(&mut cpu.r[registers::PC_IDX], &mut address_space);
+        dbg!(&address_space.0);
         instructions.execute(&instruction, &mut cpu, &mut address_space);
+        print_proc_state(&cpu);
+        stdin.read_line(&mut tmp).expect("Stdout Error"); // Wait for next step
     }
 }

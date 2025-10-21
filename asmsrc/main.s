@@ -1,21 +1,28 @@
 .syntax unified
 .cpu cortex-m0
 .thumb
-.section .text
+.text
 
 .global _start
+.global my_four
 
-_start:
-	movs r0, #42  
-	movs r0, #43
-	movs r1, #44
-	movs r2, #45
-	movs r2, #46
-	movs r2, #47
-	movs r2, #100
-_incit:
-	adds r2, #1
-	b _incit
-	b .
+_start:                      // pretty much: nop
+	b _next
+_next:                       // my_three: *u8 = static_alloc(1);
+	movs r0, #44
+	ldr r3, =my_three
+_repeat:                     // while (1) *my_three += 2;
+	adds r0, 2
+	strb r0, [r3]
+	cmp r0, #50
+	bne _repeat
+	bl centry                // Call C Code
+	b .                      // Half
+my_three:
+	.byte 3
+my_four:
+	.byte 4
 
-.end
+.data
+.ascii "Data Section(gotta love it)"
+

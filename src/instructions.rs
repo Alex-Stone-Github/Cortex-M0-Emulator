@@ -232,16 +232,15 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
                     _ => false
                 };
                 if should_branch {
-                    cpu.r[PC_IDX] += imd << 1;
+                    cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(imd << 1).wrapping_add(2);
                 }
             }
             else {
                 // Don't touch the next lines unless kyou know what you are doing
                 let imd11: i16 = ins.hdr.idx(0, 11) as i16;
                 let imd11_sign_ext: i16 = ((imd11 << 5) >> 5) as i16;
-                let mut imdoff: i32 = (imd11_sign_ext as i32) << 1;
-                imdoff += 2;
-                cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(imdoff as AWord);
+                let imdoff: i32 = (imd11_sign_ext as i32) << 1;
+                cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(imdoff as AWord).wrapping_add(2);
             }
         }
     );
@@ -280,21 +279,24 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let ext = ins.ext.unwrap();
             let imd10 = ins.hdr.idx(0, 10) as AWord;
             let s = ins.hdr.idx(10, 1) as AWord;
-            let imd11 = ext.idx(0, 13) as AWord;
+            let imd11 = ext.idx(0, 11) as AWord;
             let j1 = ext.idx(13, 1) as AWord;
             let j2 = ext.idx(11, 1) as AWord;
             let i1 = if !((j1 > 0) ^ (s > 0)) {1} else {0};
             let i2 = if !((j2 > 0) ^ (s > 0)) {1} else {0};
-            let mut address: AWord = 0;
-            address |= imd11;
-            address |= imd10 << 11;
-            address |= i1 << 21;
-            address |= i2 << 22;
-            address |= s << 23; // bit 24
-            address = address << 1; // 25th "bit"
+            let mut raw: AWord = 0;
+            raw |= imd11;
+            raw |= imd10 << 11;
+            raw |= i1 << 21;
+            raw |= i2 << 22;
+            raw |= s << 23; // bit 24
+            raw = raw << 1; // 25th "bit"
+            let rawi: i32 = raw as i32;
+            let address = (rawi << 7) >> 7;
             // Save PC to LR
+            dbg!(imd10, imd11, raw, rawi, address, i1, i2, s, j1, j2);
             cpu.r[LR_IDX] = cpu.r[PC_IDX];
-            cpu.r[PC_IDX] = address;
+            cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(address as AWord);
             
         }
     );
@@ -314,8 +316,9 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         "BX",
         |ins| ins.is_t1() && ins.hdr.idx(7, 9) == 0b010001110,
         |ins, cpu, _| {
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[PC_IDX] = cpu.r[rm_no];
+            let rm_no = ins.hdr.idx(3, 4) as usize;
+            let address = cpu.r[rm_no];
+            cpu.r[PC_IDX] = address;
         }
     );
 
@@ -460,6 +463,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         },
         |ins, cpu, addresses| {
             let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b01101;
+            dbg!("LDRIMD");
             if t1 {
                 let rt_no = ins.hdr.idx(0, 3) as usize;
                 let rn_no = ins.hdr.idx(3, 3) as usize;
@@ -480,7 +484,10 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         |ins, cpu, addresses| {
             let imd = ins.hdr.idx(0, 8) as AWord;
             let rt_no = ins.hdr.idx(8, 3) as usize;
-            cpu.r[rt_no] = addresses.read_w(cpu.r[PC_IDX] + (imd << 2));
+            let pc_read = cpu.r[PC_IDX] & !3; // clear 2 least sig bits
+            let address = pc_read.wrapping_add(imd << 2);
+            //dbg!("LDRLIT", cpu.r[PC_IDX], pc_read, imd, imd << 2, address);
+            cpu.r[rt_no] = addresses.read_w(address);
         }
     );
 
