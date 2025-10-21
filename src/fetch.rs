@@ -35,7 +35,7 @@ pub fn fetch_instruction(ip: &mut AWord, memory: &mut dyn AddressSpace) -> InsDa
 
 #[test]
 fn test_instruction_load() {
-    let mut ip = 0;
+    let mut ip = 4;
     let mut cont = [0; 4];
     cont[0] = 0b00111111; // Some sort of shift
     let mut memory = BufferMemory(&mut cont);

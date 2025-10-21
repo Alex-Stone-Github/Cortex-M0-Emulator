@@ -10,8 +10,11 @@ _start:
 	movs r0, #43
 	movs r1, #44
 	movs r2, #45
+	movs r2, #46
+	movs r2, #47
+	movs r2, #100
 _incit:
-	adds r0, #1
+	adds r2, #1
 	b _incit
 	b .
 

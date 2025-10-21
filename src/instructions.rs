@@ -3,15 +3,11 @@ use crate::registers::{Registers, SP_IDX, LR_IDX, PC_IDX};
 use crate::core::*;
 use crate::ins::LoaderExecuter;
 
-// signit and unsignit exist so we don't mess with the sign bit on implicit conversions
+// todo: remove
+/// signit and unsignit exist so we don't mess with the sign bit on implicit conversions
 fn signit(x: AWord) -> i32 {
     // Defined on x86_64
     unsafe { std::mem::transmute::<u32, i32>(x) }
-}
-// signit and unsignit exist so we don't mess with the sign bit on implicit conversions
-fn unsignit(x: i32) -> AWord {
-    // Defined on x86_64
-    unsafe { std::mem::transmute::<i32, u32>(x) }
 }
 
 /// Result, Carry Out, Overflow
@@ -49,17 +45,34 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "Add (immediate)",
-        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001110,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001110;
+            let t2 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b00110;
+            t1 || t2
+        },
         |ins, cpu, _| {
-            let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            let imd = ins.hdr.idx(6, 3) as AWord;
-            let (result, carry, over) = cortex_add(cpu.r[rm_no], imd);
-            cpu.r[rd_no] = result;
-            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
-            cpu.z = cpu.r[rd_no] == 0;
-            cpu.c = carry;
-            cpu.v = over;
+            let t1 = ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001110;
+            if t1 { // T1 Encoding
+                let rd_no = ins.hdr.idx(0, 3) as usize;
+                let rm_no = ins.hdr.idx(3, 3) as usize;
+                let imd = ins.hdr.idx(6, 3) as AWord;
+                let (result, carry, over) = cortex_add(cpu.r[rm_no], imd);
+                cpu.r[rd_no] = result;
+                cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+                cpu.z = cpu.r[rd_no] == 0;
+                cpu.c = carry;
+                cpu.v = over;
+            }
+            if !t1 {
+                let imd8 = ins.hdr.idx(0, 8) as AWord;
+                let rdn_no = ins.hdr.idx(8, 3) as usize;
+                let (result, carry, over) = cortex_add(cpu.r[rdn_no], imd8);
+                cpu.r[rdn_no] = result;
+                cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+                cpu.z = cpu.r[rdn_no] == 0;
+                cpu.c = carry;
+                cpu.v = over;
+            }
         }
     );
 
@@ -81,30 +94,48 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "Add (SP + immediate)",
-        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b10101,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b10101;
+            let t2 = ins.is_t1() && ins.hdr.idx(7, 9) == 0b101100000;
+            t1 || t2
+        },
         |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 8) as AWord;
-            let rd_no = ins.hdr.idx(8, 3) as usize;
-            let (result, carry, over) = cortex_add(cpu.r[SP_IDX], imd);
-            cpu.r[rd_no] = result;
-            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
-            cpu.z = cpu.r[rd_no] == 0;
-            cpu.c = carry;
-            cpu.v = over;
+            let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b10101;
+            if t1 { // T1 Encoding
+                let imd = ins.hdr.idx(0, 8) as AWord;
+                let rd_no = ins.hdr.idx(8, 3) as usize;
+                let (result, _, _) = cortex_add(cpu.r[SP_IDX], imd);
+                cpu.r[rd_no] = result;
+            }
+            if !t1 {
+                let imd = ins.hdr.idx(0, 7) as AWord;
+                let (result, _, _) = cortex_add(cpu.r[SP_IDX], imd << 2);
+                cpu.r[SP_IDX] = result;
+                
+            }
         }
     );
 
     instructions.implement(
         "Add (SP + register)",
-        |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000100 && ins.hdr.idx(3, 4) == 0b1101,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000100 && ins.hdr.idx(3, 4) == 0b1101;
+            let t2 = ins.is_t1() && ins.hdr.idx(7, 9) == 0b010001001 && ins.hdr.idx(0, 3) == 0b101;
+            t1 || t2
+        },
         |ins, cpu, _| {
-            let rdm_no = ins.hdr.idx(0, 3) as usize;
-            let (result, carry, over) = cortex_add(cpu.r[SP_IDX], cpu.r[rdm_no]);
-            cpu.r[rdm_no] = result;
-            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
-            cpu.z = cpu.r[rdm_no] == 0;
-            cpu.c = carry;
-            cpu.v = over;
+            let t1 = ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000100 && ins.hdr.idx(3, 4) == 0b1101;
+            if t1 {
+                // rdm, because technbially sp is arg 1
+                let rdm_no = ins.hdr.idx(0, 3) as usize;
+                let (result, _, _) = cortex_add(cpu.r[SP_IDX], cpu.r[rdm_no]);
+                cpu.r[rdm_no] = result;
+            }
+            if !t1 {
+                let rm_no = ins.hdr.idx(3, 4) as usize;
+                let (result, _, _) = cortex_add(cpu.r[SP_IDX], cpu.r[rm_no]);
+                cpu.r[SP_IDX] = result;
+            }
         }
     );
 
@@ -318,15 +349,31 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "CMP (register)",
-        |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001010,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001010;
+            let t2 = ins.is_t1() && ins.hdr.idx(7, 9) == 0b01000101;
+            t1 || t2
+        },
         |ins, cpu, _| {
-            let rn_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            let (result, carry, over) = cortex_sub(cpu.r[rn_no], cpu.r[rm_no]);
-            cpu.n = 0 < (result & (1 << 31));
-            cpu.z = result == 0;
-            cpu.c = carry;
-            cpu.v = over;
+            let t1 = ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001010;
+            if t1 {
+                let rn_no = ins.hdr.idx(0, 3) as usize;
+                let rm_no = ins.hdr.idx(3, 3) as usize;
+                let (result, carry, over) = cortex_sub(cpu.r[rn_no], cpu.r[rm_no]);
+                cpu.n = 0 < (result & (1 << 31));
+                cpu.z = result == 0;
+                cpu.c = carry;
+                cpu.v = over;
+            }
+            if !t1 {
+                let rn_no = ins.hdr.idx(0, 3) as usize;
+                let rm_no = ins.hdr.idx(3, 4) as usize;
+                let (result, carry, over) = cortex_sub(cpu.r[rn_no], cpu.r[rm_no]);
+                cpu.n = 0 < (result & (1 << 31));
+                cpu.z = result == 0;
+                cpu.c = carry;
+                cpu.v = over;
+            }
         }
     );
 
@@ -406,12 +453,24 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "LDR (immediate)",
-        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01101,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b01101;
+            let t2 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b10011;
+            t1 || t2
+        },
         |ins, cpu, addresses| {
-            let rt_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no] + (imd << 4));
+            let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b01101;
+            if t1 {
+                let rt_no = ins.hdr.idx(0, 3) as usize;
+                let rn_no = ins.hdr.idx(3, 3) as usize;
+                let imd = ins.hdr.idx(6, 5) as AWord;
+                cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no].wrapping_add(imd << 2));
+            }
+            if !t1 {
+                let imd = ins.hdr.idx(0, 8) as AWord;
+                let rt_no = ins.hdr.idx(8, 3) as usize;
+                cpu.r[rt_no] = addresses.read_w(cpu.r[SP_IDX].wrapping_add(imd << 2));
+            }
         }
     );
 
@@ -421,7 +480,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         |ins, cpu, addresses| {
             let imd = ins.hdr.idx(0, 8) as AWord;
             let rt_no = ins.hdr.idx(8, 3) as usize;
-            cpu.r[rt_no] = addresses.read_w(cpu.r[PC_IDX] + (imd << 4));
+            cpu.r[rt_no] = addresses.read_w(cpu.r[PC_IDX] + (imd << 2));
         }
     );
 
@@ -432,7 +491,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no] + (cpu.r[rm_no] << 4));
+            cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no] + (cpu.r[rm_no] << 2));
         }
     );
 
@@ -443,7 +502,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (imd << 4)) as AWord;
+            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (imd << 2)) as AWord;
         }
     );
 
@@ -454,7 +513,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (cpu.r[rm_no] << 4)) as AWord;
+            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (cpu.r[rm_no] << 2)) as AWord;
         }
     );
 
@@ -465,7 +524,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            cpu.r[rt_no] = addresses.read_hw(cpu.r[rn_no] + (imd << 4)) as AWord;
+            cpu.r[rt_no] = addresses.read_hw(cpu.r[rn_no] + (imd << 2)) as AWord;
         }
     );
 
@@ -476,7 +535,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (cpu.r[rm_no] << 4)) as i8 as i32 as AWord;
+            cpu.r[rt_no] = addresses.readb(cpu.r[rn_no] + (cpu.r[rm_no] << 2)) as i8 as i32 as AWord;
         }
     );
 
@@ -487,7 +546,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            cpu.r[rt_no] = addresses.read_hw(cpu.r[rn_no] + (cpu.r[rm_no] << 4)) as i16 as i32 as u32;
+            cpu.r[rt_no] = addresses.read_hw(cpu.r[rn_no] + (cpu.r[rm_no] << 2)) as i16 as i32 as u32;
         }
     );
 
@@ -571,13 +630,27 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "MOV (register)",
-        |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000110,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000110;
+            let t2 = ins.is_t1() && ins.hdr.idx(6, 10) == 0b0000000000;
+            t1 || t2
+        },
         |ins, cpu, _| {
-            let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 4) as usize;
-            cpu.r[rd_no] = cpu.r[rm_no];
-            cpu.z = cpu.r[rd_no] == 0;
-            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            let t1 = ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000110;
+            if t1 {
+                let rd_no = ins.hdr.idx(0, 3) as usize;
+                let rm_no = ins.hdr.idx(3, 4) as usize;
+                cpu.r[rd_no] = cpu.r[rm_no];
+                cpu.z = cpu.r[rd_no] == 0;
+                cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            }
+            if !t1 {
+                let rd_no = ins.hdr.idx(0, 3) as usize;
+                let rm_no = ins.hdr.idx(3, 3) as usize;
+                cpu.r[rd_no] = cpu.r[rm_no];
+                cpu.z = cpu.r[rd_no] == 0;
+                cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            }
         }
     );
 
@@ -616,12 +689,12 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         "MUL",
         |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001101,
         |ins, cpu, _| {
-            let rdm_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdm_no] *= cpu.r[rn_no];
+            let rdn_no = ins.hdr.idx(0, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            cpu.r[rdn_no] *= cpu.r[rm_no];
 
-            cpu.z = cpu.r[rdm_no] == 0;
-            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
         }
     );
 
@@ -648,12 +721,12 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         "ORR",
         |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001100,
         |ins, cpu, _| {
-            let rdm_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdm_no] |= cpu.r[rn_no];
+            let rdn_no = ins.hdr.idx(0, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            cpu.r[rdn_no] |= cpu.r[rm_no];
 
-            cpu.z = cpu.r[rdm_no] == 0;
-            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
         }
     );
 
@@ -728,13 +801,13 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         "ROR",
         |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100000111,
         |ins, cpu, _| {
-            let rdm_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[rdm_no] = cpu.r[rdm_no].rotate_right(cpu.r[rn_no]);
+            let rdn_no = ins.hdr.idx(0, 3) as usize;
+            let rm_no = ins.hdr.idx(3, 3) as usize;
+            cpu.r[rdn_no] = cpu.r[rdn_no].rotate_right(cpu.r[rm_no]);
 
-            cpu.z = cpu.r[rdm_no] == 0;
-            cpu.n = 0 < (cpu.r[rdm_no] & (1 << 31));
-            cpu.c = 0 < (cpu.r[rdm_no] & (1 << 31));
+            cpu.z = cpu.r[rdn_no] == 0;
+            cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+            cpu.c = 0 < (cpu.r[rdn_no] & (1 << 31));
         }
     );
 
@@ -796,12 +869,24 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "STR (immediate)",
-        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01100,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b01100;
+            let t2 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b10010;
+            t1 || t2
+        },
         |ins, cpu, addresses| {
-            let rt_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            let imd = ins.hdr.idx(6, 5) as AWord;
-            addresses.write_w(cpu.r[rn_no]+imd << 4, cpu.r[rt_no]);
+            let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b01100;
+            if t1 {
+                let rt_no = ins.hdr.idx(0, 3) as usize;
+                let rn_no = ins.hdr.idx(3, 3) as usize;
+                let imd = ins.hdr.idx(6, 5) as AWord;
+                addresses.write_w(cpu.r[rn_no]+imd << 2, cpu.r[rt_no]);
+            }
+            if !t1 {
+                let imd = ins.hdr.idx(0, 8) as AWord;
+                let rt_no = ins.hdr.idx(8, 3) as usize;
+                addresses.write_w(cpu.r[SP_IDX].wrapping_add(imd << 2), cpu.r[rt_no]);
+            }
         }
     );
 
@@ -862,17 +947,34 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "SUB (immediate)",
-        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001111,
+        |ins| {
+            let t1 = ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001111;
+            let t2 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b00111;
+            t1 || t2
+        },
         |ins, cpu, _| {
-            let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rn_no = ins.hdr.idx(3, 3) as usize;
-            let imd = ins.hdr.idx(6, 3) as AWord;
-            let (result, carry, over) = cortex_sub(cpu.r[rn_no], imd);
-            cpu.r[rd_no] = result;
-            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
-            cpu.z = cpu.r[rd_no] == 0;
-            cpu.c = carry;
-            cpu.v = over;
+            let t1 = ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001111;
+            if t1 {
+                let rd_no = ins.hdr.idx(0, 3) as usize;
+                let rn_no = ins.hdr.idx(3, 3) as usize;
+                let imd = ins.hdr.idx(6, 3) as AWord;
+                let (result, carry, over) = cortex_sub(cpu.r[rn_no], imd);
+                cpu.r[rd_no] = result;
+                cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+                cpu.z = cpu.r[rd_no] == 0;
+                cpu.c = carry;
+                cpu.v = over;
+            }
+            if !t1 {
+                let imd = ins.hdr.idx(0, 8) as AWord;
+                let rdn_no = ins.hdr.idx(8, 3) as usize;
+                let (result, carry, over) = cortex_sub(cpu.r[rdn_no], imd);
+                cpu.r[rdn_no] = result;
+                cpu.n = 0 < (cpu.r[rdn_no] & (1 << 31));
+                cpu.z = cpu.r[rdn_no] == 0;
+                cpu.c = carry;
+                cpu.v = over;
+            }
         }
     );
 
@@ -897,7 +999,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         |ins| ins.is_t1() && ins.hdr.idx(7, 9) == 0b10110001,
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 7) as AWord;
-            cpu.r[SP_IDX] -= imd << 4;
+            cpu.r[SP_IDX] -= imd << 2;
         }
     );
 
@@ -944,7 +1046,10 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     instructions.implement(
         "UDF",
-        |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b11011110,
+        |ins| {
+            // TODO: Has alternate t2 encoding
+            ins.is_t1() && ins.hdr.idx(8, 8) == 0b11011110
+        },
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 8) as usize;
             // undefined instruction exception generation

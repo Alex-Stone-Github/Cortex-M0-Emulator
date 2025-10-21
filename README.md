@@ -14,6 +14,11 @@ make
 cargo r
 ```
 
+# Compatability
+
+This emulator can only run on lsb data access host machines, making it
+architecture specific.
+
 # TODO
 
 - Memory address implementation

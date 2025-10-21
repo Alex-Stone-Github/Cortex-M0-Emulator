@@ -12,7 +12,7 @@ use crate::{core::*, fetch::fetch_instruction, registers::{PC_IDX, SP_IDX}};
 use crate::instructions::load_basic_instructions;
 
 fn print_proc_state(cpu: &registers::Registers) {
-    println!("CPU State: PC({}), R0-R7({}, {}, {}, {}, {}, {}, {}, {})",
+    println!("New CPU State: PC({}), R0-R7({}, {}, {}, {}, {}, {}, {}, {})",
         cpu.r[PC_IDX], cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[4], cpu.r[5], cpu.r[6], cpu.r[7]
         )
 }
