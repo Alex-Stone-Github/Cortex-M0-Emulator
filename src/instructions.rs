@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use crate::adr::AddressSpace;
 use crate::registers::{Registers, SP_IDX, LR_IDX, PC_IDX};
 use crate::core::*;
@@ -295,6 +297,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let address = (rawi << 7) >> 7;
             // Save PC to LR
             dbg!(imd10, imd11, raw, rawi, address, i1, i2, s, j1, j2);
+            // ADR of next instruction
             cpu.r[LR_IDX] = cpu.r[PC_IDX];
             cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(address as AWord);
             
@@ -306,7 +309,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         |ins| ins.is_t1() && ins.hdr.idx(7, 9) == 0b010001111,
         |ins, cpu, _| {
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            cpu.r[LR_IDX] = cpu.r[PC_IDX];
+            cpu.r[LR_IDX] = cpu.r[PC_IDX] + 2;
             cpu.r[PC_IDX] = cpu.r[rm_no];
         }
     );
@@ -743,21 +746,27 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         |ins, cpu, addresses| {
             let p = ins.hdr.idx(8, 1) > 0;
             let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
-            for i in 0..8 {
-                if 0 == reglist.idx(i, 1) { continue; }
-                cpu.r[i] = addresses.read_w(cpu.r[SP_IDX]);
-                cpu.r[SP_IDX] += 4;
-            }
+            
             if p {
+                dbg!("popin off pc", cpu.r[SP_IDX], addresses.read_w(cpu.r[SP_IDX]));
                 cpu.r[PC_IDX] = addresses.read_w(cpu.r[SP_IDX]);
                 cpu.r[SP_IDX] += 4;
             }
+            for i in 0..8 {
+                let j = 7 - i;
+                if 0 == reglist.idx(j, 1) { continue; }
+                dbg!("popin off");
+                cpu.r[j] = addresses.read_w(cpu.r[SP_IDX]);
+                cpu.r[SP_IDX] += 4;
+            }
+            dbg!(cpu.r[PC_IDX]);
+            //exit(1);
         }
     );
 
     instructions.implement(
         "PUSH",
-        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b10110110,
+        |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b1011010,
         |ins, cpu, addresses| {
             let m = ins.hdr.idx(8, 1) > 0;
             let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
@@ -887,7 +896,9 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
                 let rt_no = ins.hdr.idx(0, 3) as usize;
                 let rn_no = ins.hdr.idx(3, 3) as usize;
                 let imd = ins.hdr.idx(6, 5) as AWord;
-                addresses.write_w(cpu.r[rn_no]+imd << 2, cpu.r[rt_no]);
+                let address = cpu.r[rn_no].wrapping_add(imd << 2);
+                dbg!(rn_no, cpu.r[rn_no], imd, address);
+                addresses.write_w(address, cpu.r[rt_no]);
             }
             if !t1 {
                 let imd = ins.hdr.idx(0, 8) as AWord;

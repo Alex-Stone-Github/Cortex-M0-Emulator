@@ -26,6 +26,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)
 	$(ARM_AS) $< -o $@
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	$(ARM_CC) $< -o $@-asm.s -march=armv6-m -mtune=cortex-m0 -mthumb -nostdlib -Os -S
 	$(ARM_CC) $< -o $@ -march=armv6-m -mtune=cortex-m0 -mthumb -nostdlib -Os -c
 
 $(BUILD_DIR):

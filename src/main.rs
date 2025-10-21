@@ -26,6 +26,7 @@ fn main() {
         v: false,
     };
     cpu.r[PC_IDX] = 2; // PC Points to currently executing instruction + 4
+    cpu.r[SP_IDX] = 16; // kinda a hack to start with
 
     const PATH: &str = "./build/program";
     let mut memory = fstools::read_file_buffer(PATH).expect(&format!("Could not load {}", PATH));
