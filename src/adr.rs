@@ -3,6 +3,9 @@ use crate::core::{AByte, AHalfWord, AWord};
 const LITTLE_ENDIAN: bool = true;
 
 pub trait AddressSpace {
+    fn origin(&self) -> AWord;
+    fn len(&self) -> AWord;
+
     fn readb(&mut self, adr: AWord) -> AByte;
     fn writeb(&mut self, adr: AWord, x: AByte);
 
@@ -74,21 +77,3 @@ pub trait AddressSpace {
     }
 }
 
-#[test]
-fn test_lsb_read() {
-    let mut mem = [3, 0];
-    let mut sample_adr = BufferMemory(&mut mem);
-    let info = sample_adr.read_hw_le(0);
-    assert_eq!(info, 3);
-}
-
-pub struct BufferMemory<'a>(pub &'a mut [u8]);
-
-impl<'a> AddressSpace for BufferMemory<'a> {
-    fn readb(&mut self, adr: AWord) -> AByte {
-        return self.0[adr as usize];
-    }
-    fn writeb(&mut self, adr: AWord, x: AByte) {
-        self.0[adr as usize] = x;
-    }
-}

@@ -5,6 +5,7 @@ mod registers;
 mod instructions;
 mod adr;
 mod fstools;
+mod memory;
 
 use std::ops::DerefMut;
 
@@ -30,7 +31,10 @@ fn main() {
 
     const PATH: &str = "./build/program";
     let mut memory = fstools::read_file_buffer(PATH).expect(&format!("Could not load {}", PATH));
-    let mut address_space = adr::BufferMemory(memory.deref_mut());
+    let mut address_space = memory::BufferMemory{
+        origin: 0,
+        buffer: memory.deref_mut(),
+    };
 
     // Implement Instructions
     let mut instructions = ins::LoaderExecuter::new();
@@ -43,7 +47,7 @@ fn main() {
     loop {
         println!("READY!-------------------------------------");
         let instruction = fetch_instruction(&mut cpu.r[registers::PC_IDX], &mut address_space);
-        dbg!(&address_space.0);
+        dbg!(&address_space.buffer);
         instructions.execute(&instruction, &mut cpu, &mut address_space);
         print_proc_state(&cpu);
         stdin.read_line(&mut tmp).expect("Stdout Error"); // Wait for next step
