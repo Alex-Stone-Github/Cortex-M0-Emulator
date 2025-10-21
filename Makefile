@@ -2,20 +2,28 @@ ARM_AS ?= arm-none-eabi-as
 ARM_LD ?= arm-none-eabi-ld
 ARM_OJBCPY ?= arm-none-eabi-objcopy
 
-BUILDDIR = build
+SRC_DIR = asmsrc
+BUILD_DIR = build
+OUT_NAME = program
+LD_SCRIPT = linker.ld
 
-.PHONY: all clean
+SRC_FILES = $(SRC_DIR)/main.s
+OBJ_FILES = $(patsubst $(SRC_DIR)/%.s,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
-all: | $(BUILDDIR)
-	$(ARM_AS) -mcpu=cortex-m0 -mthumb asmsrc/main.s -o $(BUILDDIR)/main.o
-	# My programs start @ 0x0
-	$(ARM_LD) -Ttext=0x0 $(BUILDDIR)/main.o -o $(BUILDDIR)/main.elf
+.PHONY: clean run
+run: $(BUILD_DIR)/$(OUT_NAME)
+	xxd -b $(BUILD_DIR)/$(OUT_NAME)
+
+$(BUILD_DIR)/$(OUT_NAME): $(OBJ_FILES) $(LD_SCRIPT) | $(BUILD_DIR)
+	$(ARM_LD) $(OBJ_FILES) -o $(BUILD_DIR)/$(OUT_NAME).elf -T $(LD_SCRIPT)
 	# Move out the text section to a binary file
-	$(ARM_OJBCPY) -O binary $(BUILDDIR)/main.elf $(BUILDDIR)/main.bin
+	$(ARM_OJBCPY) -O binary $(BUILD_DIR)/$(OUT_NAME).elf $@
 
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)
+	$(ARM_AS) $< -o $@
 
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 clean:
-	rm $(BUILDDIR) -rf
+	rm $(BUILD_DIR) -rf

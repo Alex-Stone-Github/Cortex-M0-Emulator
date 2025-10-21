@@ -1,36 +1,5 @@
 use crate::core::{AByte, AHalfWord, AWord};
 
-pub const SAMPLE: [AByte; 48] = [
-    // Shift Type Stuff
-    0, 0,          // Shift LSL
-    0b00001000, 0, // Shift LSR
-    0b00010000, 0, // Shift ASR
-    0b00011000, 0, // Add Reg
-    0b00011010, 0, // Sub Reg
-    0b00011100, 0, // Add 3bit Immediate
-    0b00011110, 0, // Sub 3bit Immediate
-    0b00100000, 0, // Move
-    0b00101000, 0, // Compare
-    0b00110000, 0, // Add 8bit imed
-    0b00111000, 0, // sub 8bit imed
-                   
-                   
-    0b01000001, 0b01111000, // Data Processing
-    0b01000100, 0, // Special Data
-    0b01001000, 0, // Load Literal
-    0b01010000, 0, // Ldr / Str
-    0b01100000, 0, // Ldr / Str
-    0b10000000, 0, // Ldr / Str
-    0b10100000, 0, // Generate PC Adr
-    0b10101000, 0, // Generate SP Adr
-    0b10110000, 0, // Misc
-    0b11000000, 0, // Store Regs
-    0b11001000, 0, // Load Regs
-    0b11010000, 0, // Cond Branch
-    0b11100000, 0, // UnCond Branch
-];
-
-
 const LITTLE_ENDIAN: bool = true;
 
 pub trait AddressSpace {
@@ -108,18 +77,18 @@ pub trait AddressSpace {
 #[test]
 fn test_lsb_read() {
     let mut mem = [3, 0];
-    let mut sample_adr = Sample(&mut mem);
+    let mut sample_adr = BufferMemory(&mut mem);
     let info = sample_adr.read_hw_le(0);
     assert_eq!(info, 3);
 }
 
-pub struct Sample<'a>(pub &'a [u8]);
+pub struct BufferMemory<'a>(pub &'a mut [u8]);
 
-impl<'a> AddressSpace for Sample<'a> {
+impl<'a> AddressSpace for BufferMemory<'a> {
     fn readb(&mut self, adr: AWord) -> AByte {
         return self.0[adr as usize];
     }
     fn writeb(&mut self, adr: AWord, x: AByte) {
-        unimplemented!()
+        self.0[adr as usize] = x;
     }
 }

@@ -26,10 +26,7 @@ fn cortex_sub(a: AWord, b: AWord) -> (AWord, bool, bool) {
     (result, carry_out, overflow)
 }
 
-pub fn load_basic_instructions(
-    instructions: &mut LoaderExecuter,
-    cpu: &mut Registers,
-    addresses: &mut dyn AddressSpace) {
+pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
 
     // Little Endian & Big endian Loads and Stores
 
@@ -171,32 +168,49 @@ pub fn load_basic_instructions(
         }
     );
 
+    //todo!("many instructions have multiple encodings: eg t2")
+
     instructions.implement(
         "B",
-        |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b1101,
+        |ins| {
+            let t1 = ins.is_t1() && (ins.hdr.idx(12, 4) == 0b1101);
+            let t2 = ins.is_t1() && (ins.hdr.idx(11, 5) == 0b11100);
+            return t1 || t2;
+        },
         |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 8) as AWord;
-            let cond = ins.hdr.idx(8, 4) as usize;
-            let should_branch = match cond {
-                0b1110 => true,
-                0b0000 => cpu.z == true,
-                0b0001 => cpu.z == false,
-                0b0010 => cpu.c == true,
-                0b0011 => cpu.c == false,
-                0b0100 => cpu.n == true,
-                0b0101 => cpu.n == false,
-                0b0110 => cpu.v == true,
-                0b0111 => cpu.v == false,
-                0b1000 => cpu.c == true && cpu.z == false,
-                0b1001 => cpu.v == false && cpu.z == true,
-                0b1010 => cpu.n == cpu.v,
-                0b1011 => cpu.n != cpu.v,
-                0b1100 => cpu.z == false && cpu.n == cpu.v,
-                0b1101 => cpu.z == true && cpu.z != cpu.v,
-                _ => false
-            };
-            if should_branch {
-                cpu.r[PC_IDX] += imd;
+            let t1 = ins.is_t1() && (ins.hdr.idx(12, 4) == 0b1101);
+            if t1 { // T1 Encoding
+                let imd = ins.hdr.idx(0, 8) as AByte as i8 as i32 as AWord;
+                let cond = ins.hdr.idx(8, 4) as usize;
+                let should_branch = match cond {
+                    0b1110 => true,
+                    0b0000 => cpu.z == true,
+                    0b0001 => cpu.z == false,
+                    0b0010 => cpu.c == true,
+                    0b0011 => cpu.c == false,
+                    0b0100 => cpu.n == true,
+                    0b0101 => cpu.n == false,
+                    0b0110 => cpu.v == true,
+                    0b0111 => cpu.v == false,
+                    0b1000 => cpu.c == true && cpu.z == false,
+                    0b1001 => cpu.v == false && cpu.z == true,
+                    0b1010 => cpu.n == cpu.v,
+                    0b1011 => cpu.n != cpu.v,
+                    0b1100 => cpu.z == false && cpu.n == cpu.v,
+                    0b1101 => cpu.z == true && cpu.z != cpu.v,
+                    _ => false
+                };
+                if should_branch {
+                    cpu.r[PC_IDX] += imd << 1;
+                }
+            }
+            else {
+                // Don't touch the next lines unless kyou know what you are doing
+                let imd11: i16 = ins.hdr.idx(0, 11) as i16;
+                let imd11_sign_ext: i16 = ((imd11 << 5) >> 5) as i16;
+                let mut imdoff: i32 = (imd11_sign_ext as i32) << 1;
+                imdoff += 2;
+                cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(imdoff as AWord);
             }
         }
     );
@@ -242,10 +256,10 @@ pub fn load_basic_instructions(
             let i2 = if !((j2 > 0) ^ (s > 0)) {1} else {0};
             let mut address: AWord = 0;
             address |= imd11;
-            address |= (imd10 << 11);
-            address |= (i1 << 21);
-            address |= (i2 << 22);
-            address |= (s << 23);
+            address |= imd10 << 11;
+            address |= i1 << 21;
+            address |= i2 << 22;
+            address |= s << 23; // bit 24
             address = address << 1; // 25th "bit"
             // Save PC to LR
             cpu.r[LR_IDX] = cpu.r[PC_IDX];
@@ -382,11 +396,10 @@ pub fn load_basic_instructions(
             let rn_no = ins.hdr.idx(8, 3) as usize;
             let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
             // Load multiple registers accordin to bitmask starting at [rn_no]
-            let mut offset = 0;
             for i in 0..8 {
                 if 0 == reglist.idx(i, 1) { continue; }
-                cpu.r[i] = addresses.read_w(cpu.r[rn_no] + offset);
-                offset += 4;
+                cpu.r[i] = addresses.read_w(cpu.r[rn_no]);
+                cpu.r[rn_no] += 4;
             }
         }
     );
@@ -419,7 +432,6 @@ pub fn load_basic_instructions(
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            // TODO: Could be a bug
             cpu.r[rt_no] = addresses.read_w(cpu.r[rn_no] + (cpu.r[rm_no] << 4));
         }
     );
@@ -770,76 +782,81 @@ pub fn load_basic_instructions(
     instructions.implement(
         "STM, STMIA, STMEA",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b11000,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rn_no = ins.hdr.idx(8, 3) as usize;
-            let reglist = ins.hdr.idx(0, 8) as AWord;
-            unimplemented!()
+            let reglist = ins.hdr.idx(0, 8) as AHalfWord;
+            // Store multiple registers according to bitmask starting at [rn_no]
+            for i in 0..8 {
+                if 0 == reglist.idx(i, 1) { continue; }
+                addresses.write_w(cpu.r[rn_no], cpu.r[i]);
+                cpu.r[rn_no] += 4;
+            }
         }
     );
 
     instructions.implement(
         "STR (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01100,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            unimplemented!()
+            addresses.write_w(cpu.r[rn_no]+imd << 4, cpu.r[rt_no]);
         }
     );
 
     instructions.implement(
         "STR (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101000,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            addresses.write_w(cpu.r[rn_no]+cpu.r[rm_no], cpu.r[rt_no]);
         }
     );
 
     instructions.implement(
         "STRB (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b01110,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            unimplemented!()
+            addresses.writeb(cpu.r[rn_no]+imd, cpu.r[rt_no] as AByte);
         }
     );
 
     instructions.implement(
         "STRB (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101010,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            addresses.writeb(cpu.r[rn_no]+cpu.r[rm_no], cpu.r[rt_no] as AByte);
         }
     );
 
     instructions.implement(
         "STRH (immediate)",
         |ins| ins.is_t1() && ins.hdr.idx(11, 5) == 0b10001,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 5) as AWord;
-            unimplemented!()
+            addresses.write_hw(cpu.r[rn_no]+imd, cpu.r[rt_no] as AHalfWord);
         }
     );
 
     instructions.implement(
         "STRH (register)",
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0101001,
-        |ins, cpu, _| {
+        |ins, cpu, addresses| {
             let rt_no = ins.hdr.idx(0, 3) as usize;
             let rn_no = ins.hdr.idx(3, 3) as usize;
             let rm_no = ins.hdr.idx(6, 3) as usize;
-            unimplemented!()
+            addresses.write_hw(cpu.r[rn_no]+cpu.r[rm_no], cpu.r[rt_no] as AHalfWord);
         }
     );
 
@@ -848,9 +865,14 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001111,
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
+            let rn_no = ins.hdr.idx(3, 3) as usize;
             let imd = ins.hdr.idx(6, 3) as AWord;
-            cpu.r[rd_no] = cpu.r[rm_no] - imd;
+            let (result, carry, over) = cortex_sub(cpu.r[rn_no], imd);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -859,9 +881,14 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(9, 7) == 0b0001101,
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
-            let rm_no = ins.hdr.idx(3, 3) as usize;
-            let rn_no = ins.hdr.idx(6, 3) as usize;
-            cpu.r[rd_no] = cpu.r[rm_no] - cpu.r[rn_no];
+            let rn_no = ins.hdr.idx(3, 3) as usize;
+            let rm_no = ins.hdr.idx(6, 3) as usize;
+            let (result, carry, over) = cortex_sub(cpu.r[rn_no], cpu.r[rm_no]);
+            cpu.r[rd_no] = result;
+            cpu.n = 0 < (cpu.r[rd_no] & (1 << 31));
+            cpu.z = cpu.r[rd_no] == 0;
+            cpu.c = carry;
+            cpu.v = over;
         }
     );
 
@@ -870,7 +897,7 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(7, 9) == 0b10110001,
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 7) as AWord;
-            cpu.r[SP_IDX] -= imd;
+            cpu.r[SP_IDX] -= imd << 4;
         }
     );
 
@@ -879,7 +906,7 @@ pub fn load_basic_instructions(
         |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b11011111,
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 7) as AWord;
-            todo!()
+            unimplemented!()
         }
     );
 
@@ -889,7 +916,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!()
+            cpu.r[rd_no] = cpu.r[rm_no] as AByte as i8 as i32 as AWord;
         }
     );
 
@@ -899,7 +926,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!()
+            cpu.r[rd_no] = cpu.r[rm_no] as AHalfWord as i16 as i32 as AWord;
         }
     );
 
@@ -907,10 +934,11 @@ pub fn load_basic_instructions(
         "TST (register)",
         |ins| ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001000,
         |ins, cpu, _| {
-            let rd_no = ins.hdr.idx(0, 3) as usize;
+            let rn_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            // performs add, sets flags, discards results
-            todo!()
+            let result = cpu.r[rn_no] & cpu.r[rm_no];
+            cpu.n = 0 < (result & (1 << 31));
+            cpu.z = result == 0;
         }
     );
 
@@ -920,7 +948,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let imd = ins.hdr.idx(0, 8) as usize;
             // undefined instruction exception generation
-            todo!()
+            unimplemented!()
         }
     );
 
@@ -930,7 +958,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!()
+            cpu.r[rd_no] = cpu.r[rm_no] as u8 as u32;
         }
     );
 
@@ -940,7 +968,7 @@ pub fn load_basic_instructions(
         |ins, cpu, _| {
             let rd_no = ins.hdr.idx(0, 3) as usize;
             let rm_no = ins.hdr.idx(3, 3) as usize;
-            todo!()
+            cpu.r[rd_no] = cpu.r[rm_no] as u16 as u32;
         }
     );
 
@@ -948,8 +976,7 @@ pub fn load_basic_instructions(
         "WFE",
         |ins| ins.is_t1() && ins.hdr == 0b1011111100100000,
         |ins, cpu, _| {
-            // Enter Low Power Mode until event is  sent
-            todo!()
+            unimplemented!()
         }
     );
 
@@ -957,8 +984,7 @@ pub fn load_basic_instructions(
         "WFI",
         |ins| ins.is_t1() && ins.hdr == 0b1011111100110000,
         |ins, cpu, _| {
-            // Wait for interrupt
-            todo!()
+            unimplemented!()
         }
     );
 
@@ -966,8 +992,7 @@ pub fn load_basic_instructions(
         "YIELD",
         |ins| ins.is_t1() && ins.hdr == 0b1011111100010000,
         |ins, cpu, _| {
-            // yield enables multithreading capability
-            todo!()
+            unimplemented!()
         }
     );
 
