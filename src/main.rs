@@ -6,6 +6,7 @@ mod instructions;
 mod adr;
 mod fstools;
 mod memory;
+mod config;
 
 use std::ops::DerefMut;
 
@@ -19,6 +20,9 @@ fn print_proc_state(cpu: &registers::Registers) {
 }
 
 fn main() {
+    config::load();
+
+
     let mut cpu = &mut registers::Registers {
         r: [0; 16],
         n: false,
