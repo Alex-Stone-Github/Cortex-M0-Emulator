@@ -2,44 +2,34 @@
 
 Implementation of the armv6m architecture for cortex m0.
 
-# How to use
 
-This project is not in a working stage yet. Not all instructions work properly
-yet, but if you wish to play around the current source file is
-`./asmsrc/main.s`. If you still wish to run the development version, use the
-following shell commands sequentially:
+## Usage
+
+To run this project, use the following commands:
 
 ```sh
 make
 cargo r
 ```
 
-This program now also links with c code, and you can edit the file
-`./asmsrc/c.c` and modify the function. It should be able to call other
-functions as well if you setup the stack pointer.
+Checkout [[Configuration]]
 
-```c
-extern volatile char my_four;
+## Configuration
 
-char* garbage = "HIC";
+Configuration is done in the `config.lua` file. The format is mostly self
+explanitory. You define a table of memory regions that have specific
+functiosn(eg file load, ram, or a custom lua script).
 
-void centry() {
-	my_four = 5;
-	for (int i = 0; i < 5; i ++) {
-		my_four += 2;
-	}
-	return;
-}
-```
-
-
-# Compatability
+## Compatability
 
 This emulator can only run on lsb data access host machines, making it
 architecture specific.
 
-# TODO
-
-- Memory address implementation
+## TODO List
 - Interrupts
-- Test all instructions
+- Low Power Modes
+- Internal Registers
+
+## References
+
+- [ARMv6-M Reference Manual](https://users.ece.utexas.edu/~valvano/mspm0/Arm_Architecture_v6m_Reference_Manual.pdf)

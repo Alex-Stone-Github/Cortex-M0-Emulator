@@ -24,9 +24,9 @@ int square(int x) {
 }
 
 /// Cuts off after null termination or len expiration
-void printserial(char* msg, int len) {
+void printserial(char const* msg, int len) {
 	// Start of the special functional region(coudl call lua code)
-	volatile char* adr = (char*)300;
+	volatile char* adr = (char*)500;
 	int i = 0;
 	while (msg[i] != 0 && len > 0) {
 		*adr = msg[i];
@@ -36,7 +36,8 @@ void printserial(char* msg, int len) {
 }
 
 void theend() {
-	printserial("Alex was here!!", 500);
-	printserial("Alex was here!!", 4);
-	printserial("Alex was here!!", 500);
+	char const* message = "Alex was here!!\n";
+	printserial(message, 500);
+	printserial(message, 4);
+	printserial(message, 500);
 }

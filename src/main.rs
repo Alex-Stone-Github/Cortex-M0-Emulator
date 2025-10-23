@@ -31,7 +31,8 @@ fn main() {
         v: false,
     };
     cpu.r[PC_IDX] = 2; // PC Points to currently executing instruction + 4
-    cpu.r[SP_IDX] = 16; // kinda a hack to start with
+    cpu.r[SP_IDX] = 2000; // kinda a hack to start with(at the top of a memory page defined in lua
+                          // config)
 
 
     // Implement Instructions

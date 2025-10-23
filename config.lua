@@ -1,11 +1,12 @@
 use_config = true
 
 local function writeb_serial(adr, x) 
-	print("Being Written to at", adr, "with", x)
+	-- print("Being Written to at", adr, "with", x)
+	io.write(string.char(x))
 end
 
 local function readb_serial(adr) 
-	print("Being Read")
+	print("Being Read - Nothing Good")
 	print(adr)
 	return 0
 end
@@ -24,7 +25,7 @@ addresses = {
 		len = 1000,
 	},
 	{
-		origin = 300,
+		origin = 500,
 		type = "func",
 
 		len = 100,
@@ -34,4 +35,4 @@ addresses = {
 }
 
 
-print "What on earth is gonig on here"
+print "This is from the configuration file"

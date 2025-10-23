@@ -89,7 +89,7 @@ printserial:
 	@ args = 0, pretend = 0, frame = 0
 	@ frame_needed = 0, uses_anonymous_args = 0
 	push	{r4, lr}
-	movs	r4, #150
+	movs	r4, #250
 	adds	r1, r0, r1
 	lsls	r4, r4, #1
 .L10:
@@ -109,7 +109,7 @@ printserial:
 	.size	printserial, .-printserial
 	.section	.rodata.str1.1,"aMS",%progbits,1
 .LC3:
-	.ascii	"Alex was here!!\000"
+	.ascii	"Alex was here!!\012\000"
 	.text
 	.align	1
 	.global	theend
