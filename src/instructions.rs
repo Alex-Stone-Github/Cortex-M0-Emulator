@@ -1,7 +1,4 @@
-use std::process::exit;
-
-use crate::adr::AddressSpace;
-use crate::registers::{Registers, SP_IDX, LR_IDX, PC_IDX};
+use crate::registers::{SP_IDX, LR_IDX, PC_IDX};
 use crate::core::*;
 use crate::ins::LoaderExecuter;
 
@@ -9,7 +6,7 @@ use crate::ins::LoaderExecuter;
 /// signit and unsignit exist so we don't mess with the sign bit on implicit conversions
 fn signit(x: AWord) -> i32 {
     // Defined on x86_64
-    unsafe { std::mem::transmute::<u32, i32>(x) }
+    x as i32
 }
 
 /// Result, Carry Out, Overflow
@@ -262,8 +259,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
     instructions.implement(
         "BKPT",
         |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b10111110,
-        |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 8) as AWord;
+        |ins, _cpu, _| {
+            let _imd = ins.hdr.idx(0, 8) as AWord;
             unimplemented!("Breakpoints are not implemented yet!")
         }
     );
@@ -296,7 +293,6 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rawi: i32 = raw as i32;
             let address = (rawi << 7) >> 7;
             // Save PC to LR
-            dbg!(imd10, imd11, raw, rawi, address, i1, i2, s, j1, j2);
             // ADR of next instruction
             cpu.r[LR_IDX] = cpu.r[PC_IDX];
             cpu.r[PC_IDX] = cpu.r[PC_IDX].wrapping_add(address as AWord);
@@ -357,7 +353,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         "CMP (register)",
         |ins| {
             let t1 = ins.is_t1() && ins.hdr.idx(6, 10) == 0b0100001010;
-            let t2 = ins.is_t1() && ins.hdr.idx(7, 9) == 0b01000101;
+            let t2 = ins.is_t1() && ins.hdr.idx(8, 8) == 0b01000101;
             t1 || t2
         },
         |ins, cpu, _| {
@@ -393,8 +389,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let second_part_good = ins.ext.unwrap().idx(12, 4) == 0b100011110101;
             return !thumb1 && first_part_good && second_part_good;
         },
-        |ins, cpu, _| {
-            let ext = ins.ext.unwrap();
+        |ins, _cpu, _| {
+            let _ext = ins.ext.unwrap();
             unimplemented!("Data Memory Barrier Unimplemented")
         }
     );
@@ -408,8 +404,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let second_part_good = ins.ext.unwrap().idx(12, 4) == 0b100011110100;
             return !thumb1 && first_part_good && second_part_good;
         },
-        |ins, cpu, _| {
-            let ext = ins.ext.unwrap();
+        |ins, _cpu, _| {
+            let _ext = ins.ext.unwrap();
             unimplemented!("Data Sync Barrier Unimplemented")
         }
     );
@@ -436,8 +432,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let second_part_good = ins.ext.unwrap().idx(12, 4) == 0b100011110110;
             return !thumb1 && first_part_good && second_part_good;
         },
-        |ins, cpu, _| {
-            let ext = ins.ext.unwrap();
+        |ins, _cpu, _| {
+            let _ext = ins.ext.unwrap();
             unimplemented!("Instruction sync barrier unimplmeneted")
         }
     );
@@ -466,7 +462,6 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
         },
         |ins, cpu, addresses| {
             let t1 = ins.is_t1() && ins.hdr.idx(11, 5) == 0b01101;
-            dbg!("LDRIMD");
             if t1 {
                 let rt_no = ins.hdr.idx(0, 3) as usize;
                 let rn_no = ins.hdr.idx(3, 3) as usize;
@@ -489,7 +484,6 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let rt_no = ins.hdr.idx(8, 3) as usize;
             let pc_read = cpu.r[PC_IDX] & !3; // clear 2 least sig bits
             let address = pc_read.wrapping_add(imd << 2);
-            //dbg!("LDRLIT", cpu.r[PC_IDX], pc_read, imd, imd << 2, address);
             cpu.r[rt_no] = addresses.read_w(address);
         }
     );
@@ -673,8 +667,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let second_part_good = ins.ext.unwrap().idx(12, 4) == 1000;
             return !thumb1 && first_part_good && second_part_good;
         },
-        |ins, cpu, _| {
-            let ext = ins.ext.unwrap();
+        |ins, _cpu, _| {
+            let _ext = ins.ext.unwrap();
             unimplemented!()
         }
     );
@@ -688,8 +682,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let second_part_good = ins.ext.unwrap().idx(8, 8) == 0b10001000;
             return !thumb1 && first_part_good && second_part_good;
         },
-        |ins, cpu, _| {
-            let ext = ins.ext.unwrap();
+        |ins, _cpu, _| {
+            let _ext = ins.ext.unwrap();
 
             unimplemented!()
         }
@@ -748,18 +742,15 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             let reglist = ins.hdr.idx(0, 8) as AHalfWord; // aka bitmask
             
             if p {
-                dbg!("popin off pc", cpu.r[SP_IDX], addresses.read_w(cpu.r[SP_IDX]));
                 cpu.r[PC_IDX] = addresses.read_w(cpu.r[SP_IDX]);
                 cpu.r[SP_IDX] += 4;
             }
             for i in 0..8 {
                 let j = 7 - i;
                 if 0 == reglist.idx(j, 1) { continue; }
-                dbg!("popin off");
                 cpu.r[j] = addresses.read_w(cpu.r[SP_IDX]);
                 cpu.r[SP_IDX] += 4;
             }
-            dbg!(cpu.r[PC_IDX]);
             //exit(1);
         }
     );
@@ -897,7 +888,6 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
                 let rn_no = ins.hdr.idx(3, 3) as usize;
                 let imd = ins.hdr.idx(6, 5) as AWord;
                 let address = cpu.r[rn_no].wrapping_add(imd << 2);
-                dbg!(rn_no, cpu.r[rn_no], imd, address);
                 addresses.write_w(address, cpu.r[rt_no]);
             }
             if !t1 {
@@ -1024,8 +1014,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
     instructions.implement(
         "SVC",
         |ins| ins.is_t1() && ins.hdr.idx(8, 8) == 0b11011111,
-        |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 7) as AWord;
+        |ins, _cpu, _| {
+            let _imd = ins.hdr.idx(0, 7) as AWord;
             unimplemented!()
         }
     );
@@ -1068,8 +1058,8 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
             // TODO: Has alternate t2 encoding
             ins.is_t1() && ins.hdr.idx(8, 8) == 0b11011110
         },
-        |ins, cpu, _| {
-            let imd = ins.hdr.idx(0, 8) as usize;
+        |ins, _cpu, _| {
+            let _imd = ins.hdr.idx(0, 8) as usize;
             // undefined instruction exception generation
             unimplemented!()
         }
@@ -1098,7 +1088,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
     instructions.implement(
         "WFE",
         |ins| ins.is_t1() && ins.hdr == 0b1011111100100000,
-        |ins, cpu, _| {
+        |_ins, _cpu, _| {
             unimplemented!()
         }
     );
@@ -1106,7 +1096,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
     instructions.implement(
         "WFI",
         |ins| ins.is_t1() && ins.hdr == 0b1011111100110000,
-        |ins, cpu, _| {
+        |_ins, _cpu, _| {
             unimplemented!()
         }
     );
@@ -1114,7 +1104,7 @@ pub fn load_basic_instructions(instructions: &mut LoaderExecuter) {
     instructions.implement(
         "YIELD",
         |ins| ins.is_t1() && ins.hdr == 0b1011111100010000,
-        |ins, cpu, _| {
+        |_ins, _cpu, _| {
             unimplemented!()
         }
     );

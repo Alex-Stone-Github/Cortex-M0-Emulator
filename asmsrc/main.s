@@ -17,7 +17,8 @@ _repeat:                     // while (1) *my_three += 2;
 	cmp r0, #50
 	bne _repeat
 	bl centry                // Call C Code
-	b .                      // Half
+	bl theend                // call more c code(for spec region)
+	b .                      // Halt
 my_three:
 	.byte 3
 my_four:

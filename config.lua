@@ -1,17 +1,37 @@
+use_config = true
 
-print "rusty_var"
-
--- Random Variable
-xyz = 345
-
-local what = "hi ther"
-
-local function dostuff() 
-	hostfunc()
-	hostfunc()
-	hostfunc()
+local function writeb_serial(adr, x) 
+	print("Being Written to at", adr, "with", x)
 end
 
--- Print out some junk 5 times
+local function readb_serial(adr) 
+	print("Being Read")
+	print(adr)
+	return 0
+end
 
-dostuff()
+addresses = {
+	bootloader = {
+		origin = 0,
+		type = "file",
+
+		path = "build/program",
+	},
+	some_memory = {
+		origin = 1000,
+		type = "ram",
+
+		len = 1000,
+	},
+	{
+		origin = 300,
+		type = "func",
+
+		len = 100,
+		readb = readb_serial,
+		writeb = writeb_serial,
+	}
+}
+
+
+print "What on earth is gonig on here"

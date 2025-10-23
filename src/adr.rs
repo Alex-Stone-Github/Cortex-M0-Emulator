@@ -16,7 +16,7 @@ pub trait AddressSpace {
             self.readb(adr),
             self.readb(adr+1)
         ];
-        unsafe { std::mem::transmute::<[AByte; 2], AHalfWord>(bytes) }
+        AHalfWord::from_le_bytes(bytes)
     }
     fn read_hw_be(&mut self, adr: AWord) -> AHalfWord {self.read_hw_le(adr).swap_bytes()}
     fn read_w_le(&mut self, adr: AWord) -> AWord {
@@ -28,21 +28,21 @@ pub trait AddressSpace {
             self.readb(adr+3),
         ];
         // Probably defined(same size at least)
-        unsafe { std::mem::transmute::<[AByte; 4], AWord>(bytes) }
+        AWord::from_le_bytes(bytes)
     }
     fn read_w_be(&mut self, adr: AWord) -> AWord {self.read_w_le(adr).swap_bytes()}
 
     // Writes
     fn write_hw_le(&mut self, adr: AWord, x: AHalfWord) {
         debug_assert!(adr % 2 == 0);
-        let bytes = unsafe { std::mem::transmute::<AHalfWord, [AByte; 2]>(x) };
+        let bytes = x.to_le_bytes();
         self.writeb(adr, bytes[0]);
         self.writeb(adr + 1, bytes[1]);
     }
     fn write_hw_be(&mut self, adr: AWord, x: AHalfWord) {self.write_hw_le(adr, x.swap_bytes());}
     fn write_w_le(&mut self, adr: AWord, x: AWord) {
         debug_assert!(adr % 2 == 0);
-        let bytes = unsafe { std::mem::transmute::<AWord, [AByte; 4]>(x) };
+        let bytes = x.to_le_bytes();
         self.writeb(adr, bytes[0]);
         self.writeb(adr + 1, bytes[1]);
         self.writeb(adr + 2, bytes[2]);
@@ -77,3 +77,11 @@ pub trait AddressSpace {
     }
 }
 
+impl std::fmt::Debug for dyn AddressSpace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Memory Region")
+            .field("origin", &self.origin())
+            .field("length", &self.len())
+            .finish()
+    }
+}

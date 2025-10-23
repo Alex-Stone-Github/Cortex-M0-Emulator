@@ -1,5 +1,4 @@
 use crate::adr::AddressSpace;
-use crate::memory::BufferMemory;
 use crate::core::*;
 use crate::ins::*;
 
@@ -35,12 +34,13 @@ pub fn fetch_instruction(ip: &mut AWord, memory: &mut dyn AddressSpace) -> InsDa
 
 #[test]
 fn test_instruction_load() {
+    use crate::memory::BufferMemory;
     let mut ip = 4;
     let mut cont = [0; 4];
     cont[0] = 0b00111111; // Some sort of shift
     let mut memory = BufferMemory{
         origin: 0,
-        buffer: &mut cont,
+        buffer: Box::new(cont),
     };
     let gimmi = fetch_instruction(&mut ip, &mut memory);
     assert!(gimmi.is_t1());

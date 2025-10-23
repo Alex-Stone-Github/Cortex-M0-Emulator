@@ -8,20 +8,20 @@ mod fstools;
 mod memory;
 mod config;
 
-use std::ops::DerefMut;
-
-use crate::{core::*, fetch::fetch_instruction, registers::{PC_IDX, SP_IDX}};
-use crate::instructions::load_basic_instructions;
+use crate::{adr::AddressSpace, fetch::fetch_instruction, instructions::load_basic_instructions, registers::{PC_IDX, SP_IDX}};
 
 fn print_proc_state(cpu: &registers::Registers) {
-    println!("New CPU State: PC({}), R0-R7({}, {}, {}, {}, {}, {}, {}, {})",
+    log::debug!("New CPU State: PC({}), R0-R7({}, {}, {}, {}, {}, {}, {}, {})",
         cpu.r[PC_IDX], cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[4], cpu.r[5], cpu.r[6], cpu.r[7]
         )
 }
 
 fn main() {
-    config::load();
+    env_logger::init();
 
+    log::info!("Loading Config");
+    let mut address_space = config::load();
+    log::info!("Loaded Config");
 
     let mut cpu = &mut registers::Registers {
         r: [0; 16],
@@ -33,27 +33,23 @@ fn main() {
     cpu.r[PC_IDX] = 2; // PC Points to currently executing instruction + 4
     cpu.r[SP_IDX] = 16; // kinda a hack to start with
 
-    const PATH: &str = "./build/program";
-    let mut memory = fstools::read_file_buffer(PATH).expect(&format!("Could not load {}", PATH));
-    let mut address_space = memory::BufferMemory{
-        origin: 0,
-        buffer: memory.deref_mut(),
-    };
 
     // Implement Instructions
     let mut instructions = ins::LoaderExecuter::new();
     load_basic_instructions(&mut instructions);
 
     // Run the program
-    println!("Press Enter to step the program!");
-    let stdin = std::io::stdin();
-    let mut tmp = String::new();
-    loop {
-        println!("READY!-------------------------------------");
-        let instruction = fetch_instruction(&mut cpu.r[registers::PC_IDX], &mut address_space);
-        dbg!(&address_space.buffer);
-        instructions.execute(&instruction, &mut cpu, &mut address_space);
+    let instruction_count = 2000;
+    for _ in 0..instruction_count {
+        step(&instructions, &mut cpu, &mut *address_space);
         print_proc_state(&cpu);
-        stdin.read_line(&mut tmp).expect("Stdout Error"); // Wait for next step
     }
+}
+
+pub fn step(
+    supported_instructions: &ins::LoaderExecuter,
+    cpu: &mut registers::Registers,
+    addresses: &mut dyn AddressSpace) {
+    let instruction = fetch_instruction(&mut cpu.r[registers::PC_IDX], addresses);
+    supported_instructions.execute(&instruction, cpu, addresses);
 }

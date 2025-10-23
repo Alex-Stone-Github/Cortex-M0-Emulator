@@ -39,7 +39,7 @@ impl LoaderExecuter {
         let instruction_type = self.instruction_types.iter().find(|ins| (ins.is_me)(instruction))
             .unwrap_or(&InsType { name: "_INVALID(Skipped)", is_me: |_|true, execute: |_, _, _| {}});
         (instruction_type.execute)(instruction, regs, memory);
-        println!("Executed `{:<20}` HDR: {:016b}!", instruction_type.name, instruction.hdr);
+        log::debug!("Executed `{:<20}` HDR: {:016b}!", instruction_type.name, instruction.hdr);
     }
 }
 

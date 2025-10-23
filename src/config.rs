@@ -1,28 +1,80 @@
-use mlua::*;
+use crate::adr::AddressSpace;
+use crate::core::{AByte, AWord};
+use crate::memory::{AddressDeMultiplexer, BufferMemory, FunctionalAddressSpace};
+use crate::fstools::read_file_buffer;
 
-pub fn load() {
-    println!("Loading Configuration");
-
-    let file_cont = std::fs::read_to_string("./config.lua").expect("Bad File");
-
+pub fn load() -> Box<dyn AddressSpace> {
+    // Load the Config
+    let config_file = std::fs::read_to_string("./config.lua").expect("Bad File");
     let lua = mlua::Lua::new();
-    lua.load_std_libs(mlua::StdLib::OS).expect("Could not load os stdlib");
-    let module = lua.load(file_cont.as_str());
+    lua.load_std_libs(mlua::StdLib::ALL_SAFE).expect("Failed to load lua stdlib");
+    let module = lua.load(config_file.as_str());
 
-    let lf = lua.create_function(|lua: &Lua, _: ()| -> mlua::Result<()> {
-        for _ in 0..5 {
-            println!("Hi there(from host)");
-        }
-        Ok(())
-    }).expect("Could not create lua host func");
-    lua.globals().set("hostfunc", lf).expect("Could not make host func available to lua code");
-
-
+    // Run the Config
     module.exec().expect("Error in lua code");
 
-    // Get the var
-    let var: u32 = lua.globals().get("xyz").expect("Variable does not exist");
-    assert_eq!(var, 345);
+    // Examine Results
+    let use_config: bool = lua.globals().get("use_config").expect("No Config");
+    let address_specs: mlua::Table = lua.globals().get("addresses")
+        .expect("No Memory Map");
+    assert_eq!(use_config, true, "No Usable Configuration");
 
-    println!("Finished Loading Configuration");
+    // Parsing memory
+    let mut addresses = AddressDeMultiplexer::full();
+    address_specs.for_each(|_: String, props: mlua::Table| -> mlua::Result<()> {
+        // _ represents a label
+        let origin: u32 = props.get("origin").expect("Expected Origin");
+        let rtype: String = props.get("type").expect("Expected Type");
+
+        let region: Box<dyn AddressSpace> = match rtype.as_str() {
+            "file" => {
+                let filepath: String = props.get("path")
+                    .expect("Need filepath for type = file");
+                let binary = read_file_buffer(&filepath)
+                    .expect("Invalid Filepath");
+
+                Box::new(BufferMemory {
+                    origin,
+                    buffer: binary
+                })
+            },
+            "ram" => {
+                let len: u32 = props.get("len").expect("Expected Length");
+                let buffer = (0..len).map(|_| 0).collect::<Box<[u8]>>();
+
+                Box::new(BufferMemory {
+                    origin,
+                    buffer,
+                })
+            },
+            "func" => {
+                let length: u32 = props.get("len").expect("Expected Length");
+                let readb_fl: mlua::Function = props.get("readb")
+                    .expect("Expected readb function");
+                let writeb_fl: mlua::Function = props.get("writeb")
+                    .expect("Expected writeb function");
+
+                let readb_f = Box::new(move |adr: AWord| -> AByte {
+                    readb_fl.call(adr).expect("Invalid Function Return")
+                });
+                let writeb_f = Box::new(move |adr: AWord, x: AByte| {
+                    writeb_fl.call((adr, x)).expect("Invalid Function Return")
+                });
+
+                Box::new(FunctionalAddressSpace {
+                    origin,
+                    length,
+                    readb_f,
+                    writeb_f
+                })
+            },
+            _ => panic!("Invalid Region Type")
+        };
+        addresses.add_region(region);
+        Ok(())
+    }).expect("Invalid Config Format");
+
+    // Return
+    std::mem::forget(lua);
+    Box::new(addresses)
 }

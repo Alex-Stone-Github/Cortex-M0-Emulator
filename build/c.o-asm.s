@@ -79,9 +79,69 @@ centry:
 	.word	my_four
 	.word	.LANCHOR0
 	.size	centry, .-centry
-	.global	garbage
+	.align	1
+	.global	printserial
+	.syntax unified
+	.code	16
+	.thumb_func
+	.type	printserial, %function
+printserial:
+	@ args = 0, pretend = 0, frame = 0
+	@ frame_needed = 0, uses_anonymous_args = 0
+	push	{r4, lr}
+	movs	r4, #150
+	adds	r1, r0, r1
+	lsls	r4, r4, #1
+.L10:
+	ldrb	r3, [r0]
+	cmp	r3, #0
+	beq	.L9
+	subs	r2, r1, r0
+	cmp	r2, #0
+	bgt	.L12
+.L9:
+	@ sp needed
+	pop	{r4, pc}
+.L12:
+	strb	r3, [r4]
+	adds	r0, r0, #1
+	b	.L10
+	.size	printserial, .-printserial
 	.section	.rodata.str1.1,"aMS",%progbits,1
 .LC3:
+	.ascii	"Alex was here!!\000"
+	.text
+	.align	1
+	.global	theend
+	.syntax unified
+	.code	16
+	.thumb_func
+	.type	theend, %function
+theend:
+	@ args = 0, pretend = 0, frame = 0
+	@ frame_needed = 0, uses_anonymous_args = 0
+	movs	r1, #250
+	push	{r4, lr}
+	ldr	r0, .L15
+	lsls	r1, r1, #1
+	bl	printserial
+	@ sp needed
+	movs	r1, #4
+	ldr	r0, .L15
+	bl	printserial
+	movs	r1, #250
+	ldr	r0, .L15
+	lsls	r1, r1, #1
+	bl	printserial
+	pop	{r4, pc}
+.L16:
+	.align	2
+.L15:
+	.word	.LC3
+	.size	theend, .-theend
+	.global	garbage
+	.section	.rodata.str1.1
+.LC5:
 	.ascii	"HIC\000"
 	.global	number
 	.data
@@ -94,5 +154,5 @@ number:
 	.type	garbage, %object
 	.size	garbage, 4
 garbage:
-	.word	.LC3
+	.word	.LC5
 	.ident	"GCC: (Fedora 15.1.0-1.fc42) 15.1.0"
