@@ -3,7 +3,7 @@ use crate::core::{AByte, AWord};
 use crate::memory::{AddressDeMultiplexer, BufferMemory, FunctionalAddressSpace};
 use crate::fstools::read_file_buffer;
 
-pub fn load() -> Box<dyn AddressSpace> {
+pub fn load<'a>() -> AddressDeMultiplexer<'a> {
     // Load the Config
     let config_file = std::fs::read_to_string("./config.lua").expect("Bad File");
     let lua = mlua::Lua::new();
@@ -74,7 +74,8 @@ pub fn load() -> Box<dyn AddressSpace> {
         Ok(())
     }).expect("Invalid Config Format");
 
+
     // Return
     std::mem::forget(lua);
-    Box::new(addresses)
+    addresses
 }

@@ -1,15 +1,18 @@
+MEMORY {
+	FLASH (rwx) : ORIGIN = 0, LENGTH = 500
+}
+
 SECTIONS
 {
-	. = 0;
     .text :
     {
         *(.text)
 		*(.rodata)
 		*(.rodata.*)
-    }
+    } > FLASH
 	.data : 
 	{
 		*(.data)
 		*(.bss)
-	}
+	} > FLASH
 }

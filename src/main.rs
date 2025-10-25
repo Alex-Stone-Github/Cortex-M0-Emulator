@@ -7,6 +7,7 @@ mod adr;
 mod fstools;
 mod memory;
 mod config;
+mod fb;
 
 use crate::{adr::AddressSpace, fetch::fetch_instruction, instructions::load_basic_instructions, registers::{PC_IDX, SP_IDX}};
 
@@ -22,6 +23,12 @@ fn main() {
     log::info!("Loading Config");
     let mut address_space = config::load();
     log::info!("Loaded Config");
+
+    // Testing
+    // find a way to store behind an rc and call tick
+    address_space.add_region(
+        Box::new(fb::FramebufferDevice::new(5000, 100, 100, "FB Window".into()))
+        );
 
     let mut cpu = &mut registers::Registers {
         r: [0; 16],
@@ -42,7 +49,7 @@ fn main() {
     // Run the program
     let instruction_count = 2000;
     for _ in 0..instruction_count {
-        step(&instructions, &mut cpu, &mut *address_space);
+        step(&instructions, &mut cpu, &mut address_space);
         print_proc_state(&cpu);
     }
 }
